@@ -1,0 +1,26 @@
+# Xcode
+.DS_Store
+build/
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+DerivedData/
+*.xcworkspace/xcuserdata/
+.swiftpm/
+Packages/
+
+# Xcode project
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+Carthage/DerivedData/
+
+# Swift Package Manager
+.swiftpm/config/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.build/
