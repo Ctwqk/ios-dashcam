@@ -1,40 +1,29 @@
-# DashCam
+# DashCam for iOS
 
-iOS DashCam application built with SwiftUI and AVFoundation.
+SwiftUI dashcam application with live preview, loop recording, collision detection, and local storage management.
 
-## Features
+## Highlights
 
-- Real-time camera preview
-- Continuous video recording with loop buffer
-- Collision detection
-- Speed tracking
-- Auto-restart service
-- Local storage management
+- SwiftUI-based mobile UI for capture state and runtime controls
+- Loop-buffer recording with protection flows around collision events
+- Device-side camera, location, and storage coordination in one app
 
-## Requirements
+## Tech Stack
 
-- iOS 17.0+
-- Xcode 15.0+
+- Swift, SwiftUI, AVFoundation, CoreLocation, Xcode project structure
 
-## Installation
+## Repository Layout
 
-1. Clone the repository
-2. Open `dashcam/DashCam.xcodeproj` in Xcode
-3. Build and run on your device
+- `dashcam/DashCam.xcodeproj`
+- `dashcam/DashCam/Sources`
+- `README.md`
 
-## Project Structure
+## Getting Started
 
-```
-dashcam/
-└── dashcam/
-    └── DashCam/
-        ├── Sources/
-        │   ├── Camera/         # Camera management
-        │   ├── Detection/      # Collision detection
-        │   ├── Models/         # Data models
-        │   ├── Recording/     # Video recording
-        │   ├── Services/      # App services
-        │   ├── Storage/       # Storage management
-        │   └── Views/         # SwiftUI views
-        └── Assets.xcassets/   # App assets
-```
+- Open `dashcam/DashCam.xcodeproj` in Xcode 15 or newer.
+- Build and run on an iOS device with camera and location permissions enabled.
+- Use the repository as the iOS half of the broader DashCam project story.
+
+## Current Status
+
+- This README was refreshed from a code audit and is intentionally scoped to what is directly visible in the repository.
