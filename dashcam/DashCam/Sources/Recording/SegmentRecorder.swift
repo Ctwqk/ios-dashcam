@@ -19,9 +19,6 @@ final class SegmentRecorder: ObservableObject {
     @Published private(set) var currentSegment: Segment?
     @Published private(set) var isRecording = false
 
-    /// One-shot callback fired on the main queue after the next segment finishes writing.
-    var onNextSegmentFinished: (() -> Void)?
-
     /// External processors that want to inspect video frames.
     /// Add/remove from the main thread before starting recording.
     var sampleBufferProcessors: [SampleBufferProcessor] = []
@@ -35,6 +32,7 @@ final class SegmentRecorder: ObservableObject {
     /// The currently active writer accepting new sample buffers.
     private var activeWriter: SegmentWriter?
     private var acceptingFrames = false
+    private let finalizations = OrderedCompletionQueue<Result<Segment, Error>>()
     /// After a writer failure, wait before trying again so a persistent problem
     /// (for example a full disk) cannot spin at the frame rate.
     private var nextWriterAttempt = Date.distantPast
@@ -66,14 +64,9 @@ final class SegmentRecorder: ObservableObject {
     /// Stops recording and finishes the active writer.
     /// The optional `completion` is called on the main queue after the last segment is delivered.
     func stopRecording(completion: (() -> Void)? = nil) {
-        guard isRecording else {
-            completion?()
-            return
-        }
         isRecording = false
         segmentTimer?.invalidate()
         segmentTimer = nil
-        onNextSegmentFinished = nil
 
         // Unregister callbacks so no more buffers arrive
         cameraManager.setSampleBufferHandlers(video: nil, audio: nil)
@@ -88,28 +81,32 @@ final class SegmentRecorder: ObservableObject {
             let writer = self.activeWriter
             self.activeWriter = nil
 
-            guard let writer else {
-                DispatchQueue.main.async { completion?() }
-                return
+            if let writer {
+                self.finish(writer)
             }
-            writer.finish { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.deliver(result, from: writer)
-                    completion?()
-                }
+            // Include writers already finalizing from a rotation or an earlier stop.
+            self.finalizations.barrier {
+                DispatchQueue.main.async { completion?() }
             }
         }
     }
 
     /// Force-finishes the current segment and continues recording.
     /// The finished segment is delivered via delegate; a new segment starts immediately.
-    func finishCurrentSegmentAndContinue() {
-        guard isRecording else { return }
+    func finishCurrentSegmentAndContinue(completion: @escaping () -> Void) {
         segmentTimer?.invalidate()
         segmentTimer = nil
 
         cameraManager.bufferQueue.async { [weak self] in
-            self?.rotateWriter()
+            guard let self else { return }
+            if self.acceptingFrames {
+                self.rotateWriter(completion: completion)
+            } else {
+                // An interruption may have stopped the writer during the impact delay.
+                self.finalizations.barrier {
+                    DispatchQueue.main.async(execute: completion)
+                }
+            }
         }
     }
 
@@ -178,8 +175,8 @@ final class SegmentRecorder: ObservableObject {
     }
 
     /// Swap the active writer: the current one becomes outgoing and a new one is created.
-    /// The next incoming buffer goes to the new writer, so no frames are lost.
-    private func rotateWriter() {
+    /// The next incoming buffer goes to the new writer.
+    private func rotateWriter(completion: (() -> Void)? = nil) {
         guard acceptingFrames else { return }
 
         let outgoingWriter = activeWriter
@@ -193,17 +190,28 @@ final class SegmentRecorder: ObservableObject {
             createNewWriter()
         }
 
-        guard let outgoing = outgoingWriter else { return }
-        outgoing.finish { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.deliver(result, from: outgoing)
+        if let outgoing = outgoingWriter {
+            finish(outgoing, completion: completion)
+        } else {
+            finalizations.barrier {
+                DispatchQueue.main.async { completion?() }
+            }
+        }
+    }
 
-                // Fire one-shot callback
-                if let callback = self.onNextSegmentFinished {
-                    self.onNextSegmentFinished = nil
-                    callback()
-                }
+    /// Completion order from AVFoundation is unspecified. Deliver in recording order,
+    /// and bind an impact callback to its own writer instead of whichever finishes first.
+    private func finish(_ writer: SegmentWriter, completion: (() -> Void)? = nil) {
+        let ticket = finalizations.enqueue { [weak self] result in
+            DispatchQueue.main.async {
+                self?.deliver(result, from: writer)
+                completion?()
+            }
+        }
+        writer.finish { [weak self] result in
+            guard let self else { return }
+            self.cameraManager.bufferQueue.async {
+                self.finalizations.complete(ticket, with: result)
             }
         }
     }

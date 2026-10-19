@@ -42,6 +42,7 @@ final class DashcamViewModel: ObservableObject {
     private var delegateBridge: SegmentDelegateBridge?
     private var previousBrightness: CGFloat?
     private var isStarting = false
+    private var isStopping = false
 
     // Collision handling
     private var isHandlingCollision = false
@@ -73,7 +74,7 @@ final class DashcamViewModel: ObservableObject {
     // MARK: - Public Actions
 
     func startRecording() {
-        guard recordingState != .recording, !isStarting else { return }
+        guard recordingState != .recording, !isStarting, !isStopping else { return }
         isStarting = true
 
         cameraManager.configureAndStart(with: config) { [weak self] isRunning in
@@ -105,12 +106,15 @@ final class DashcamViewModel: ObservableObject {
 
     /// Stops recording without saving the buffer (the buffered footage stays until discarded).
     func stopRecording() {
-        segmentRecorder.stopRecording()
+        guard !isStopping else { return }
+        isStopping = true
         tearDownSession()
+        segmentRecorder.stopRecording { [weak self] in self?.isStopping = false }
     }
 
     func toggleRecording() {
-        if recordingState == .recording {
+        guard !isStopping else { return }
+        if segmentRecorder.isRecording || recordingState == .paused {
             showSaveDialog = true
         } else {
             startRecording()
@@ -120,9 +124,12 @@ final class DashcamViewModel: ObservableObject {
     /// Manual save: stop recording, merge ALL buffer segments into one video, save to Photos.
     /// The buffer is only cleared once the clip is safely in Photos.
     func saveAndStopRecording() {
+        guard !isStopping else { return }
+        isStopping = true
+        tearDownSession()
         segmentRecorder.stopRecording { [weak self] in
             guard let self else { return }
-            self.tearDownSession()
+            self.isStopping = false
 
             guard let request = self.loopBuffer.beginExport(trigger: .manual) else {
                 self.saveStatusMessage = NSLocalizedString("status.noSegments", comment: "")
@@ -154,10 +161,13 @@ final class DashcamViewModel: ObservableObject {
 
     /// Discard all buffered segments and stop recording.
     func discardAndStopRecording() {
+        guard !isStopping else { return }
+        isStopping = true
         // Wait for the last segment to be delivered before discarding, otherwise it
         // would arrive after the discard and land in the buffer.
         segmentRecorder.stopRecording { [weak self] in
             self?.loopBuffer.discardAllSegments()
+            self?.isStopping = false
         }
         tearDownSession()
     }
@@ -186,6 +196,7 @@ final class DashcamViewModel: ObservableObject {
         locationManager.stopTracking()
 
         recordingState = .idle
+        collisionGeneration += 1
         isHandlingCollision = false
         isWaitingForCollisionSegment = false
         stopElapsedTimer()
@@ -195,7 +206,7 @@ final class DashcamViewModel: ObservableObject {
     /// Called when the camera is interrupted or the app goes to the background:
     /// finish the current segment (with a background task so it can complete) and wait.
     private func pauseForInterruption() {
-        guard recordingState == .recording else { return }
+        guard segmentRecorder.isRecording else { return }
         recordingState = .paused
 
         let application = UIApplication.shared
@@ -257,7 +268,8 @@ final class DashcamViewModel: ObservableObject {
                 self.recordingState = .recording
             }
         } onError: { [weak self] error in
-            self?.recordingState = .error(error.localizedDescription)
+            guard let self, self.segmentRecorder.isRecording else { return }
+            self.recordingState = .error(error.localizedDescription)
         }
         self.delegateBridge = bridge
         segmentRecorder.delegate = bridge
@@ -296,10 +308,9 @@ final class DashcamViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, self.isHandlingCollision, self.collisionGeneration == generation else { return }
 
-            self.segmentRecorder.onNextSegmentFinished = { [weak self] in
+            self.segmentRecorder.finishCurrentSegmentAndContinue { [weak self] in
                 self?.saveBufferAfterCollision(generation: generation)
             }
-            self.segmentRecorder.finishCurrentSegmentAndContinue()
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.collisionSegmentTimeout) { [weak self] in
@@ -307,7 +318,6 @@ final class DashcamViewModel: ObservableObject {
             Log.recording.error("timed out waiting for the post-collision segment")
             self.isWaitingForCollisionSegment = false
             self.isHandlingCollision = false
-            self.segmentRecorder.onNextSegmentFinished = nil
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
@@ -316,7 +326,7 @@ final class DashcamViewModel: ObservableObject {
     }
 
     private func saveBufferAfterCollision(generation: Int) {
-        guard collisionGeneration == generation else { return }
+        guard collisionGeneration == generation, isWaitingForCollisionSegment else { return }
         isWaitingForCollisionSegment = false
 
         guard let request = loopBuffer.beginExport(trigger: .collision) else {
@@ -334,6 +344,9 @@ final class DashcamViewModel: ObservableObject {
             location: locationManager.lastLocation
         ) { [weak self] success, count in
             guard let self else { return }
+            // An older export may finish after a manual stop and a new recording.
+            self.loopBuffer.endExport(request, clearBuffer: false)
+            guard self.collisionGeneration == generation else { return }
             self.isHandlingCollision = false
             if success {
                 self.saveStatusMessage = String(
@@ -342,8 +355,6 @@ final class DashcamViewModel: ObservableObject {
             } else {
                 self.saveStatusMessage = NSLocalizedString("status.collisionSaveFailed", comment: "")
             }
-            // Recording continues after a collision, so the buffer is kept.
-            self.loopBuffer.endExport(request, clearBuffer: false)
             self.clearSaveStatusLater()
         }
     }
