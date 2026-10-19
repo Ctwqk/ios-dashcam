@@ -237,28 +237,36 @@ struct DashcamView: View {
         .animation(.easeInOut, value: viewModel.collisionDetected)
     }
 
+    /// Empty state shown when there is no usable camera (simulator, no permission).
+    /// Compact and anchored below the top bar so it does not cover the HUD in landscape.
     private func cameraErrorCard(_ error: CameraError) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "video.slash.fill")
-                .font(.system(size: 32))
-                .foregroundColor(.white.opacity(0.9))
-            Text(error.message)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-            if error.canOpenSettings {
-                Button("camera.openSettings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+        VStack {
+            Spacer().frame(height: 56)
+            HStack(spacing: 14) {
+                Image(systemName: "video.slash.fill")
+                    .font(.system(size: 28))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(error.message)
+                        .font(.system(size: 14, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if error.canOpenSettings {
+                        Button("camera.openSettings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                     }
                 }
-                .buttonStyle(.borderedProminent)
             }
+            .foregroundColor(.white)
+            .padding(16)
+            .frame(maxWidth: 460)
+            .background(Color.black.opacity(0.75))
+            .cornerRadius(12)
+            Spacer()
         }
-        .padding(24)
-        .frame(maxWidth: 420)
-        .background(Color.black.opacity(0.75))
-        .cornerRadius(12)
     }
 
     private var storageWarning: some View {

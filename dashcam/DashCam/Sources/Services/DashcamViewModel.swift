@@ -67,6 +67,7 @@ final class DashcamViewModel: ObservableObject {
         setupBindings()
         setupCallbacks()
         cameraManager.refreshAvailability()
+        storageManager.updateStorageInfo() // show real free space before the first recording
     }
 
     // MARK: - Public Actions

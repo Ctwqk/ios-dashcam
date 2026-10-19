@@ -24,13 +24,20 @@ xcrun simctl privacy "${UDID}" grant photos-add "${BUNDLE_ID}" || true
 xcrun simctl privacy "${UDID}" grant location "${BUNDLE_ID}" || true
 
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}"
-sleep 6
+sleep 8
 xcrun simctl io "${UDID}" screenshot "${OUT_DIR}/main.png"
 
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -showSettings
-sleep 6
+# Wait for the first-boot "Ready for Apple Intelligence" banner to slide away.
+sleep 20
 xcrun simctl io "${UDID}" screenshot "${OUT_DIR}/settings.png"
 
 xcrun simctl shutdown "${UDID}" || true
+
+# The app is landscape-only but the simulator framebuffer is portrait, so the
+# captured images come out rotated by 90 degrees clockwise. Rotate them upright.
+for image in "${OUT_DIR}"/*.png; do
+    sips -r 270 "${image}" >/dev/null
+done
 ls -l "${OUT_DIR}"
