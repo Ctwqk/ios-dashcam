@@ -34,6 +34,7 @@
 		E10000000000000000000018 /* InterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000000000000000000000A /* InterruptionTests.swift */; };
 		E10000000000000000000019 /* MediaPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000000000000000000000B /* MediaPipelineTests.swift */; };
 		E1000000000000000000001E /* DashCamCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000012 /* DashCamCore */; };
+		E1000000000000000000001F /* LoopBufferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBE32F67E9E700D15C2D /* LoopBufferManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -323,6 +324,7 @@
                 E10000000000000000000017 /* Logging.swift in Sources */,
                 E10000000000000000000018 /* InterruptionTests.swift in Sources */,
                 E10000000000000000000019 /* MediaPipelineTests.swift in Sources */,
+                E1000000000000000000001F /* LoopBufferManager.swift in Sources */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };

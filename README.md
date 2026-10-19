@@ -120,7 +120,7 @@ contains the original author's team ID). The camera, motion sensors and GPS only
 ## Tests
 
 The decision logic lives in the `dashcam/DashCamCore` Swift package (Foundation only, 79 XCTest cases).
-Another 9 simulator tests exercise the production media and interruption adapters with generated samples and notifications.
+Another 10 simulator tests exercise the production media and interruption adapters with generated samples and notifications.
 
 ```bash
 make test-core        # swift test on the macOS host (also works on Linux: cd dashcam/DashCamCore && swift test)
@@ -136,7 +136,7 @@ to drop for a given shortfall) and orphan-file selection; file-name format, roun
 files; configuration persistence and range validation; encoder bit-rate based size estimates; thermal frame-rate
 throttling; clip metadata; out-of-order writer completion, stop barriers, and snapshot-only cleanup after a save.
 The simulator adapter tests verify playable H.264 output, a two-segment passthrough merge, rejection of corrupt input,
-overlapping interruptions, cancelled restarts, observer registration, and runtime-error pausing.
+snapshot cleanup on disk, overlapping interruptions, cancelled restarts, observer registration, and runtime-error pausing.
 
 ## Project layout
 
@@ -193,7 +193,7 @@ Verified in CI on a `macos-latest` runner (Xcode 26.6, iOS 26.5 SDK):
 - the app builds for the iOS Simulator with code signing disabled;
 - all 79 `DashCamCore` tests pass, both with `swift test` on the macOS host and with `xcodebuild test` in an iOS
   Simulator (they also pass with Swift 6.0 on Linux);
-- 9 simulator adapter tests pass, including generated video writing and merging;
+- 10 simulator adapter tests pass, including generated video writing and merging;
 - SwiftLint reports no violations;
 - the app installs and launches in the simulator and renders the HUD and the Settings sheet (screenshots above).
 

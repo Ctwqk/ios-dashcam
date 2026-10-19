@@ -3,6 +3,31 @@ import DashCamCore
 import XCTest
 
 final class MediaPipelineTests: XCTestCase {
+    @MainActor
+    func testSuccessfulSavePreservesFootageAddedDuringExport() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = LoopBufferManager(config: DashcamConfig(), directory: directory)
+        let saved = Segment()
+        let newer = Segment()
+        for segment in [saved, newer] {
+            try Data([0]).write(to: directory.appendingPathComponent(segment.filename))
+        }
+        manager.addSegment(saved)
+        let request = try XCTUnwrap(manager.beginExport(trigger: .manual))
+        manager.addSegment(newer)
+        manager.endExport(request, clearBuffer: true)
+
+        // Wait for the queued deletion, then inspect both bookkeeping and actual files.
+        let savedURL = directory.appendingPathComponent(saved.filename)
+        for _ in 0..<100 where FileManager.default.fileExists(atPath: savedURL.path) {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(manager.segments.map(\.id), [newer.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: savedURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(newer.filename).path))
+    }
+
     func testWriterProducesPlayableVideoAndRejectsAppendAfterFinish() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
