@@ -1,11 +1,18 @@
 import AVFoundation
 import Combine
+import DashCamCore
 
 protocol SegmentRecorderDelegate: AnyObject {
     func segmentRecorder(_ recorder: SegmentRecorder, didFinishSegment segment: Segment)
     func segmentRecorder(_ recorder: SegmentRecorder, didFailWithError error: Error)
 }
 
+/// Turns the camera's frame stream into back-to-back MP4 segments.
+///
+/// Threading: `isRecording`, `currentSegment` and the rotation timer belong to the main
+/// thread. `activeWriter` and `acceptingFrames` belong to `cameraManager.bufferQueue`, the
+/// queue that also delivers the frames; every state change that affects them is dispatched
+/// onto that queue, so writers are never swapped while a frame is being appended.
 final class SegmentRecorder: ObservableObject {
     weak var delegate: SegmentRecorderDelegate?
 
@@ -23,8 +30,15 @@ final class SegmentRecorder: ObservableObject {
     private let config: DashcamConfig
     private var segmentTimer: Timer?
 
+    // MARK: Confined to cameraManager.bufferQueue
+
     /// The currently active writer accepting new sample buffers.
     private var activeWriter: SegmentWriter?
+    private var acceptingFrames = false
+    /// After a writer failure, wait before trying again so a persistent problem
+    /// (for example a full disk) cannot spin at the frame rate.
+    private var nextWriterAttempt = Date.distantPast
+    private static let retryDelay: TimeInterval = 2
 
     init(cameraManager: CameraManager, config: DashcamConfig) {
         self.cameraManager = cameraManager
@@ -37,14 +51,15 @@ final class SegmentRecorder: ObservableObject {
         guard !isRecording else { return }
         isRecording = true
 
-        // Register for sample buffer callbacks from CameraManager.
         // The first SegmentWriter is created lazily on the first video buffer,
         // because we need videoFormatDescription to configure AVAssetWriter.
-        cameraManager.onVideoSampleBuffer = { [weak self] buffer in
-            self?.handleVideoSampleBuffer(buffer)
-        }
-        cameraManager.onAudioSampleBuffer = { [weak self] buffer in
-            self?.handleAudioSampleBuffer(buffer)
+        cameraManager.setSampleBufferHandlers(
+            video: { [weak self] buffer in self?.handleVideoSampleBuffer(buffer) },
+            audio: { [weak self] buffer in self?.handleAudioSampleBuffer(buffer) }
+        )
+        cameraManager.bufferQueue.async { [weak self] in
+            self?.acceptingFrames = true
+            self?.nextWriterAttempt = .distantPast
         }
     }
 
@@ -58,33 +73,30 @@ final class SegmentRecorder: ObservableObject {
         isRecording = false
         segmentTimer?.invalidate()
         segmentTimer = nil
+        onNextSegmentFinished = nil
 
         // Unregister callbacks so no more buffers arrive
-        cameraManager.onVideoSampleBuffer = nil
-        cameraManager.onAudioSampleBuffer = nil
+        cameraManager.setSampleBufferHandlers(video: nil, audio: nil)
 
-        // Finish active writer and deliver last segment
-        guard let writer = activeWriter else {
-            completion?()
-            return
-        }
-        activeWriter = nil
+        // Take the writer on the queue that appends to it, so we never finish it mid-append.
+        cameraManager.bufferQueue.async { [weak self] in
+            guard let self else {
+                DispatchQueue.main.async { completion?() }
+                return
+            }
+            self.acceptingFrames = false
+            let writer = self.activeWriter
+            self.activeWriter = nil
 
-        writer.finish { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self else {
+            guard let writer else {
+                DispatchQueue.main.async { completion?() }
+                return
+            }
+            writer.finish { [weak self] result in
+                DispatchQueue.main.async {
+                    self?.deliver(result, from: writer)
                     completion?()
-                    return
                 }
-                switch result {
-                case .success(let segment):
-                    if FileManager.default.fileExists(atPath: writer.outputURL.path) {
-                        self.delegate?.segmentRecorder(self, didFinishSegment: segment)
-                    }
-                case .failure(let error):
-                    self.delegate?.segmentRecorder(self, didFailWithError: error)
-                }
-                completion?()
             }
         }
     }
@@ -96,13 +108,12 @@ final class SegmentRecorder: ObservableObject {
         segmentTimer?.invalidate()
         segmentTimer = nil
 
-        // Dispatch to bufferQueue to safely swap writers
         cameraManager.bufferQueue.async { [weak self] in
             self?.rotateWriter()
         }
     }
 
-    // MARK: - Private: Sample Buffer Handling (runs on bufferQueue)
+    // MARK: - Sample buffer handling (runs on bufferQueue)
 
     private func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         // Forward to external processors (per-frame processing capability)
@@ -110,13 +121,19 @@ final class SegmentRecorder: ObservableObject {
             processor.processVideoSampleBuffer(sampleBuffer)
         }
 
+        guard acceptingFrames else { return }
+
         // Lazy-create the first writer once format descriptions are available
-        if activeWriter == nil && isRecording {
-            guard cameraManager.videoFormatDescription != nil else { return }
+        if activeWriter == nil {
+            guard cameraManager.videoFormatDescription != nil, Date() >= nextWriterAttempt else { return }
             createNewWriter()
         }
 
-        activeWriter?.appendVideoBuffer(sampleBuffer)
+        guard let writer = activeWriter else { return }
+        if !writer.appendVideoBuffer(sampleBuffer), writer.hasFailed {
+            Log.recording.error("segment writer failed; starting a new segment")
+            rotateWriter()
+        }
     }
 
     private func handleAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
@@ -127,7 +144,7 @@ final class SegmentRecorder: ObservableObject {
         activeWriter?.appendAudioBuffer(sampleBuffer)
     }
 
-    // MARK: - Private: Writer Management (must be called on bufferQueue)
+    // MARK: - Writer management (must be called on bufferQueue)
 
     private func createNewWriter() {
         let segment = Segment()
@@ -152,6 +169,7 @@ final class SegmentRecorder: ObservableObject {
                 self?.scheduleRotationTimer()
             }
         } catch {
+            nextWriterAttempt = Date().addingTimeInterval(Self.retryDelay)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.delegate?.segmentRecorder(self, didFailWithError: error)
@@ -159,30 +177,27 @@ final class SegmentRecorder: ObservableObject {
         }
     }
 
-    /// Atomically swap active writer: current becomes outgoing, new one is created.
-    /// The next incoming buffer goes to the new writer -> zero frame loss.
+    /// Swap the active writer: the current one becomes outgoing and a new one is created.
+    /// The next incoming buffer goes to the new writer, so no frames are lost.
     private func rotateWriter() {
-        guard isRecording else { return }
+        guard acceptingFrames else { return }
 
         let outgoingWriter = activeWriter
         activeWriter = nil
 
-        // Create new writer immediately so the next buffer goes to it
-        createNewWriter()
+        // Create the new writer immediately so the next buffer goes to it
+        if outgoingWriter?.hasFailed == true {
+            // The outgoing writer broke; avoid an immediate retry storm.
+            nextWriterAttempt = Date().addingTimeInterval(Self.retryDelay)
+        } else {
+            createNewWriter()
+        }
 
-        // Finish the outgoing writer asynchronously
         guard let outgoing = outgoingWriter else { return }
         outgoing.finish { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
-                switch result {
-                case .success(let segment):
-                    if FileManager.default.fileExists(atPath: outgoing.outputURL.path) {
-                        self.delegate?.segmentRecorder(self, didFinishSegment: segment)
-                    }
-                case .failure(let error):
-                    self.delegate?.segmentRecorder(self, didFailWithError: error)
-                }
+                self.deliver(result, from: outgoing)
 
                 // Fire one-shot callback
                 if let callback = self.onNextSegmentFinished {
@@ -193,15 +208,31 @@ final class SegmentRecorder: ObservableObject {
         }
     }
 
+    // MARK: - Main thread
+
+    private func deliver(_ result: Result<Segment, Error>, from writer: SegmentWriter) {
+        switch result {
+        case .success(let segment):
+            if FileManager.default.fileExists(atPath: writer.outputURL.path) {
+                delegate?.segmentRecorder(self, didFinishSegment: segment)
+            }
+        case .failure(let error):
+            delegate?.segmentRecorder(self, didFailWithError: error)
+        }
+    }
+
     private func scheduleRotationTimer() {
         segmentTimer?.invalidate()
+        segmentTimer = nil
+        guard isRecording else { return }
+
         segmentTimer = Timer.scheduledTimer(
             withTimeInterval: config.segmentDuration,
             repeats: false
         ) { [weak self] _ in
             guard let self, self.isRecording else { return }
-            self.cameraManager.bufferQueue.async {
-                self.rotateWriter()
+            self.cameraManager.bufferQueue.async { [weak self] in
+                self?.rotateWriter()
             }
         }
     }

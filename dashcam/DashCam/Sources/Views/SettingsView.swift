@@ -1,4 +1,5 @@
 import SwiftUI
+import DashCamCore
 
 struct SettingsView: View {
     @Binding var config: DashcamConfig
@@ -103,7 +104,7 @@ struct SettingsView: View {
                     HStack {
                         Text("settings.version")
                         Spacer()
-                        Text("1.0")
+                        Text(appVersion)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -122,11 +123,12 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
     }
 
+    /// Size of a full loop, from the encoder's configured bit rates (not a guess per minute).
     private var estimatedStorage: String {
-        let mb = config.bufferMinutes
-        if mb >= 1024 {
-            return String(format: "%.1f GB", Double(mb) / 1024.0)
-        }
-        return "\(mb) MB"
+        ByteCountFormatter.string(fromByteCount: config.estimatedBufferBytes, countStyle: .file)
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 }

@@ -196,6 +196,70 @@
         }
       }
     },
+    "camera.error.denied" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera access is off. Enable it for DashCam in Settings to record."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机权限已关闭。请在“设置”中为 DashCam 打开相机权限后再录制。"
+          }
+        }
+      }
+    },
+    "camera.error.unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No back camera is available on this device."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备没有可用的后置摄像头。"
+          }
+        }
+      }
+    },
+    "camera.error.setupFailed %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera setup failed: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机初始化失败：%@"
+          }
+        }
+      }
+    },
+    "camera.openSettings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开设置"
+          }
+        }
+      }
+    },
     "error.mergeFailed" : {
       "localizations" : {
         "en" : {
@@ -259,6 +323,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "碰撞检测"
+          }
+        }
+      }
+    },
+    "hud.gpsOff" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPS off"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "定位已关闭"
           }
         }
       }

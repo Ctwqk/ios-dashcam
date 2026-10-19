@@ -3,12 +3,11 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		9C43FBD82F67E98D00D15C2D /* DashcamConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBD72F67E98D00D15C2D /* DashcamConfig.swift */; };
-		9C43FBDA2F67E98E00D15C2D /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBD92F67E98E00D15C2D /* Segment.swift */; };
+		9C43FBD82F67E98D00D15C2D /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBD72F67E98D00D15C2D /* AppModels.swift */; };
 		9C43FBDC2F67E98F00D15C2D /* SampleBufferProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBDB2F67E98F00D15C2D /* SampleBufferProcessor.swift */; };
 		9C43FBDE2F67E9BB00D15C2D /* CameraManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBDD2F67E9BB00D15C2D /* CameraManager.swift */; };
 		9C43FBE02F67E9BC00D15C2D /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBDF2F67E9BC00D15C2D /* SegmentWriter.swift */; };
@@ -26,11 +25,12 @@
 		9C43FBF82F67EA8200D15C2D /* DashCamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBF72F67EA8200D15C2D /* DashCamApp.swift */; };
 		9C43FBFA2F67F11200D15C2D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 9C43FBF92F67F11200D15C2D /* Localizable.xcstrings */; };
 		A10000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000015 /* Assets.xcassets */; };
+		A90000001 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000002 /* Logging.swift */; };
+		A90000010 /* DashCamCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000012 /* DashCamCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		9C43FBD72F67E98D00D15C2D /* DashcamConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashcamConfig.swift; sourceTree = "<group>"; };
-		9C43FBD92F67E98E00D15C2D /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
+		9C43FBD72F67E98D00D15C2D /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModels.swift; sourceTree = "<group>"; };
 		9C43FBDB2F67E98F00D15C2D /* SampleBufferProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleBufferProcessor.swift; sourceTree = "<group>"; };
 		9C43FBDD2F67E9BB00D15C2D /* CameraManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraManager.swift; sourceTree = "<group>"; };
 		9C43FBDF2F67E9BC00D15C2D /* SegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentWriter.swift; sourceTree = "<group>"; };
@@ -50,6 +50,7 @@
 		A20000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000099 /* DashCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DashCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A90000002 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +58,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A90000010 /* DashCamCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -92,6 +94,7 @@
 				A40000008 /* Storage */,
 				A40000009 /* Services */,
 				A40000010 /* Views */,
+				A90000003 /* Support */,
 				9C43FBF72F67EA8200D15C2D /* DashCamApp.swift */,
 			);
 			path = Sources;
@@ -100,8 +103,7 @@
 		A40000004 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				9C43FBD72F67E98D00D15C2D /* DashcamConfig.swift */,
-				9C43FBD92F67E98E00D15C2D /* Segment.swift */,
+				9C43FBD72F67E98D00D15C2D /* AppModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -170,6 +172,14 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		A90000003 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				A90000002 /* Logging.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -186,6 +196,9 @@
 			dependencies = (
 			);
 			name = DashCam;
+			packageProductDependencies = (
+				A90000012 /* DashCamCore */,
+			);
 			productName = DashCam;
 			productReference = A20000099 /* DashCam.app */;
 			productType = "com.apple.product-type.application";
@@ -214,6 +227,9 @@
 				Base,
 			);
 			mainGroup = A40000001;
+			packageReferences = (
+				A90000011 /* XCLocalSwiftPackageReference "DashCamCore" */,
+			);
 			productRefGroup = A40000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -245,8 +261,9 @@
 				9C43FBEC2F67EA1F00D15C2D /* AutoRestartService.swift in Sources */,
 				9C43FBEE2F67EA2000D15C2D /* SpeedTracker.swift in Sources */,
 				9C43FBDC2F67E98F00D15C2D /* SampleBufferProcessor.swift in Sources */,
-				9C43FBD82F67E98D00D15C2D /* DashcamConfig.swift in Sources */,
+				9C43FBD82F67E98D00D15C2D /* AppModels.swift in Sources */,
 				9C43FBF82F67EA8200D15C2D /* DashCamApp.swift in Sources */,
+				A90000001 /* Logging.swift in Sources */,
 				9C43FBDE2F67E9BB00D15C2D /* CameraManager.swift in Sources */,
 				9C43FBE22F67E9E600D15C2D /* SegmentRecorder.swift in Sources */,
 				9C43FBF62F67EA8100D15C2D /* DashcamView.swift in Sources */,
@@ -256,7 +273,6 @@
 				9C43FBF22F67EA5900D15C2D /* CameraPreviewView.swift in Sources */,
 				9C43FBE42F67E9E700D15C2D /* LoopBufferManager.swift in Sources */,
 				9C43FBF02F67EA4500D15C2D /* DashcamViewModel.swift in Sources */,
-				9C43FBDA2F67E98E00D15C2D /* Segment.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -366,6 +382,20 @@
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A90000011 /* XCLocalSwiftPackageReference "DashCamCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = DashCamCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90000012 /* DashCamCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DashCamCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		A70000001 /* Build configuration list for PBXProject "DashCam" */ = {

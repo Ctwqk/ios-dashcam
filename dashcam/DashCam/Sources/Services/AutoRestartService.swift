@@ -2,6 +2,9 @@ import AVFoundation
 import UIKit
 import Combine
 
+/// Watches for anything that stops the camera (phone call, another app using the mic,
+/// thermal pressure, the app going to the background) and asks the view model to stop,
+/// then to resume once the interruption is over.
 final class AutoRestartService: ObservableObject {
     @Published private(set) var interruptionReason: String?
     @Published private(set) var isRecovering = false
@@ -13,7 +16,11 @@ final class AutoRestartService: ObservableObject {
     private var wasRecordingBeforeInterruption = false
     private var cancellables = Set<AnyCancellable>()
 
+    /// Safe to call repeatedly: earlier subscriptions are dropped first, otherwise every
+    /// restart would stack another copy of each observer.
     func startObserving() {
+        cancellables.removeAll()
+
         // AVCaptureSession interruption
         NotificationCenter.default.publisher(for: .AVCaptureSessionWasInterrupted)
             .compactMap { $0.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int }
@@ -32,8 +39,10 @@ final class AutoRestartService: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // App lifecycle
-        NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)
+        // App lifecycle. Only a real trip to the background stops recording: the app also
+        // resigns active for permission prompts, Control Center and notification banners,
+        // none of which interrupt the camera.
+        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.interruptionReason = "App moved to background"
@@ -64,12 +73,11 @@ final class AutoRestartService: ObservableObject {
 
     func stopObserving() {
         cancellables.removeAll()
+        interruptionReason = nil
     }
 
     func setRecordingActive(_ active: Bool) {
-        if active {
-            wasRecordingBeforeInterruption = true
-        }
+        wasRecordingBeforeInterruption = active
     }
 
     // MARK: - Private
@@ -107,6 +115,6 @@ final class AutoRestartService: ObservableObject {
     }
 
     deinit {
-        stopObserving()
+        cancellables.removeAll()
     }
 }

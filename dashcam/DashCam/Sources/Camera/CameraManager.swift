@@ -1,53 +1,149 @@
 import AVFoundation
 import UIKit
+import DashCamCore
+
+/// Why the camera cannot be used. Shown in the UI as an empty-state card.
+enum CameraError: Equatable {
+    case permissionDenied
+    case cameraUnavailable
+    case setupFailed(String)
+
+    var message: String {
+        switch self {
+        case .permissionDenied:
+            return NSLocalizedString("camera.error.denied", comment: "")
+        case .cameraUnavailable:
+            return NSLocalizedString("camera.error.unavailable", comment: "")
+        case .setupFailed(let detail):
+            return String(format: NSLocalizedString("camera.error.setupFailed %@", comment: ""), detail)
+        }
+    }
+
+    /// Whether the user can fix the problem in the system Settings app.
+    var canOpenSettings: Bool { self == .permissionDenied }
+}
 
 final class CameraManager: NSObject, ObservableObject {
     let captureSession = AVCaptureSession()
 
     /// Serial queue for all sample buffer delegate callbacks.
-    /// SegmentWriter append calls also happen on this queue — thread-safe without locks.
+    /// SegmentWriter append calls also happen on this queue, so they need no extra locking.
     let bufferQueue = DispatchQueue(label: "com.dashcam.bufferQueue", qos: .userInteractive)
-
-    /// Called on bufferQueue for every video frame.
-    var onVideoSampleBuffer: ((CMSampleBuffer) -> Void)?
-    /// Called on bufferQueue for every audio sample.
-    var onAudioSampleBuffer: ((CMSampleBuffer) -> Void)?
 
     /// Format descriptions captured from the first sample buffers.
     /// SegmentWriter needs these to configure AVAssetWriter inputs.
+    /// Written and read on `bufferQueue` only.
     private(set) var videoFormatDescription: CMFormatDescription?
     private(set) var audioFormatDescription: CMFormatDescription?
 
-    @Published var isSessionRunning = false
-    @Published var error: String?
+    @Published private(set) var isSessionRunning = false
+    @Published private(set) var error: CameraError?
+
+    // Both handlers are confined to bufferQueue; use setSampleBufferHandlers to change them.
+    private var onVideoSampleBuffer: ((CMSampleBuffer) -> Void)?
+    private var onAudioSampleBuffer: ((CMSampleBuffer) -> Void)?
 
     private let sessionQueue = DispatchQueue(label: "com.dashcam.session")
     private var videoDeviceInput: AVCaptureDeviceInput?
     private var isConfigured = false
     private var thermalObserver: NSObjectProtocol?
+    private var runtimeErrorObserver: NSObjectProtocol?
     private var currentConfig: DashcamConfig?
 
-    func configureAndStart(with config: DashcamConfig, completion: (() -> Void)? = nil) {
+    // MARK: - Public
+
+    /// Registers (or clears, with `nil`) the per-frame callbacks. They are invoked on `bufferQueue`.
+    /// The change itself is applied on `bufferQueue`, so it is ordered with respect to frame delivery.
+    func setSampleBufferHandlers(
+        video: ((CMSampleBuffer) -> Void)?,
+        audio: ((CMSampleBuffer) -> Void)?
+    ) {
+        bufferQueue.async { [weak self] in
+            self?.onVideoSampleBuffer = video
+            self?.onAudioSampleBuffer = audio
+        }
+    }
+
+    /// Cheap check that never shows a permission prompt: surfaces a missing camera or a denied
+    /// permission in the UI up front instead of after the first tap on Record.
+    func refreshAvailability() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .denied, .restricted:
+            error = .permissionDenied
+            return
+        default:
+            break
+        }
+
+        if Self.backCamera() == nil {
+            error = .cameraUnavailable
+        } else if error == .permissionDenied || error == .cameraUnavailable {
+            error = nil
+        }
+    }
+
+    /// Asks for camera (required) and microphone (optional) access, configures the session
+    /// once and starts it. `completion` runs on the main queue with `true` if the session is running.
+    func configureAndStart(with config: DashcamConfig, completion: @escaping (Bool) -> Void) {
         currentConfig = config
-        sessionQueue.async { [weak self] in
+
+        ensureAccess(for: .video) { [weak self] videoGranted in
             guard let self else { return }
-            self.setupSession(config: config)
-            if !self.captureSession.isRunning {
-                self.captureSession.startRunning()
+            guard videoGranted else {
+                self.error = .permissionDenied
+                completion(false)
+                return
             }
-            DispatchQueue.main.async {
-                self.isSessionRunning = self.captureSession.isRunning
-                self.startThermalMonitoring()
-                completion?()
+
+            // Without microphone access the footage is simply recorded without audio.
+            self.ensureAccess(for: .audio) { [weak self] audioGranted in
+                guard let self else { return }
+                self.sessionQueue.async {
+                    let failure = self.setupSession(config: config, includeAudio: audioGranted)
+                    if failure == nil, !self.captureSession.isRunning {
+                        self.captureSession.startRunning()
+                    }
+                    let isRunning = self.captureSession.isRunning
+
+                    DispatchQueue.main.async {
+                        self.error = failure
+                        self.isSessionRunning = isRunning
+                        if isRunning {
+                            self.startThermalMonitoring()
+                            self.startRuntimeErrorObservation()
+                        }
+                        completion(isRunning)
+                    }
+                }
             }
         }
     }
 
-    // MARK: - Private
+    // MARK: - Permissions
 
-    private func setupSession(config: DashcamConfig) {
-        guard !isConfigured else { return }
-        isConfigured = true
+    private func ensureAccess(for mediaType: AVMediaType, completion: @escaping (Bool) -> Void) {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: mediaType) { granted in
+                DispatchQueue.main.async { completion(granted) }
+            }
+        default:
+            completion(false)
+        }
+    }
+
+    // MARK: - Session setup (runs on sessionQueue)
+
+    private static func backCamera() -> AVCaptureDevice? {
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+    }
+
+    /// Returns `nil` on success, or the reason the session could not be configured.
+    /// `isConfigured` is only set on success, so a failed attempt can be retried cleanly.
+    private func setupSession(config: DashcamConfig, includeAudio: Bool) -> CameraError? {
+        guard !isConfigured else { return nil }
 
         captureSession.beginConfiguration()
         defer { captureSession.commitConfiguration() }
@@ -56,49 +152,32 @@ final class CameraManager: NSObject, ObservableObject {
             ? .hd1280x720
             : .hd1920x1080
 
-        // Video input — prefer wide-angle camera (default)
-        let camera: AVCaptureDevice? =
-            AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        // Video input: wide-angle back camera
+        guard let camera = Self.backCamera() else { return .cameraUnavailable }
 
-        guard let camera else {
-            setError("No back camera available")
-            return
-        }
-
+        let input: AVCaptureDeviceInput
         do {
-            let input = try AVCaptureDeviceInput(device: camera)
-            if captureSession.canAddInput(input) {
-                captureSession.addInput(input)
-                videoDeviceInput = input
-            }
-
-            // Configure frame rate and power-saving options
-            try camera.lockForConfiguration()
-
-            let desiredFPS = CMTimeMake(value: 1, timescale: Int32(config.frameRate))
-            camera.activeVideoMinFrameDuration = desiredFPS
-            camera.activeVideoMaxFrameDuration = desiredFPS
-
-            // Disable HDR to reduce CPU/heat
-            if camera.responds(to: #selector(getter: AVCaptureDevice.automaticallyAdjustsVideoHDREnabled)) {
-                camera.automaticallyAdjustsVideoHDREnabled = false
-                camera.isVideoHDREnabled = false
-            }
-
-            camera.unlockForConfiguration()
+            input = try AVCaptureDeviceInput(device: camera)
         } catch {
-            setError("Camera setup failed: \(error.localizedDescription)")
-            return
+            return .setupFailed(error.localizedDescription)
         }
+        guard captureSession.canAddInput(input) else {
+            return .setupFailed("cannot add camera input")
+        }
+        captureSession.addInput(input)
+        videoDeviceInput = input
 
-        // Audio input
-        if let mic = AVCaptureDevice.default(for: .audio),
+        configureDevice(camera, frameRate: config.frameRate)
+
+        // Audio input (optional)
+        if includeAudio,
+           let mic = AVCaptureDevice.default(for: .audio),
            let audioInput = try? AVCaptureDeviceInput(device: mic),
            captureSession.canAddInput(audioInput) {
             captureSession.addInput(audioInput)
         }
 
-        // --- Video data output (frame-by-frame) ---
+        // Video data output (frame by frame)
         let videoOutput = AVCaptureVideoDataOutput()
         videoOutput.alwaysDiscardsLateVideoFrames = true
         videoOutput.setSampleBufferDelegate(self, queue: bufferQueue)
@@ -107,46 +186,66 @@ final class CameraManager: NSObject, ObservableObject {
                 kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         ]
 
-        if captureSession.canAddOutput(videoOutput) {
-            captureSession.addOutput(videoOutput)
+        guard captureSession.canAddOutput(videoOutput) else {
+            rollbackConfiguration()
+            return .setupFailed("cannot add video output")
+        }
+        captureSession.addOutput(videoOutput)
 
-            if let connection = videoOutput.connection(with: .video) {
-                // Landscape orientation
-                if #available(iOS 17.0, *) {
-                    if connection.isVideoRotationAngleSupported(0) {
-                        connection.videoRotationAngle = 0
-                    }
-                } else {
-                    if connection.isVideoOrientationSupported {
-                        connection.videoOrientation = .landscapeRight
-                    }
-                }
+        if let connection = videoOutput.connection(with: .video) {
+            // Landscape orientation
+            if connection.isVideoRotationAngleSupported(0) {
+                connection.videoRotationAngle = 0
+            }
 
-                // Disable video stabilization to reduce CPU
-                if connection.isVideoStabilizationSupported {
-                    connection.preferredVideoStabilizationMode = .off
-                }
+            // Disable video stabilization to reduce CPU
+            if connection.isVideoStabilizationSupported {
+                connection.preferredVideoStabilizationMode = .off
             }
         }
 
-        // --- Audio data output ---
+        // Audio data output
         let audioOutput = AVCaptureAudioDataOutput()
         audioOutput.setSampleBufferDelegate(self, queue: bufferQueue)
-
         if captureSession.canAddOutput(audioOutput) {
             captureSession.addOutput(audioOutput)
         }
+
+        isConfigured = true
+        return nil
     }
 
-    private func setError(_ message: String) {
-        DispatchQueue.main.async { [weak self] in
-            self?.error = message
+    /// Frame rate and power-saving options. Failing to lock the device is not fatal:
+    /// recording still works at the format's default frame rate.
+    private func configureDevice(_ camera: AVCaptureDevice, frameRate: Int) {
+        do {
+            try camera.lockForConfiguration()
+            defer { camera.unlockForConfiguration() }
+
+            let duration = CMTimeMake(value: 1, timescale: Int32(frameRate))
+            camera.activeVideoMinFrameDuration = duration
+            camera.activeVideoMaxFrameDuration = duration
+
+            // Disable HDR to reduce CPU/heat (only formats that support it expose the switch)
+            if camera.activeFormat.isVideoHDRSupported {
+                camera.automaticallyAdjustsVideoHDREnabled = false
+                camera.isVideoHDREnabled = false
+            }
+        } catch {
+            Log.camera.error("could not configure camera device: \(error.localizedDescription)")
         }
+    }
+
+    private func rollbackConfiguration() {
+        captureSession.inputs.forEach { captureSession.removeInput($0) }
+        captureSession.outputs.forEach { captureSession.removeOutput($0) }
+        videoDeviceInput = nil
     }
 
     // MARK: - Thermal Monitoring
 
     private func startThermalMonitoring() {
+        guard thermalObserver == nil else { return }
         thermalObserver = NotificationCenter.default.addObserver(
             forName: ProcessInfo.thermalStateDidChangeNotification,
             object: nil,
@@ -160,29 +259,20 @@ final class CameraManager: NSObject, ObservableObject {
         guard let camera = videoDeviceInput?.device,
               let config = currentConfig else { return }
 
-        let state = ProcessInfo.processInfo.thermalState
-        let targetFPS: Int
-
-        switch state {
-        case .nominal, .fair:
-            targetFPS = config.frameRate          // full rate (default 30)
-        case .serious:
-            targetFPS = max(15, config.frameRate / 2) // halve, floor 15
-        case .critical:
-            targetFPS = 15                         // minimum usable
-        @unknown default:
-            targetFPS = config.frameRate
-        }
+        let targetFPS = ThermalPolicy.targetFrameRate(
+            baseFrameRate: config.frameRate,
+            thermalLevel: ThermalLevel(ProcessInfo.processInfo.thermalState)
+        )
 
         sessionQueue.async {
             do {
                 try camera.lockForConfiguration()
+                defer { camera.unlockForConfiguration() }
                 let duration = CMTimeMake(value: 1, timescale: Int32(targetFPS))
                 camera.activeVideoMinFrameDuration = duration
                 camera.activeVideoMaxFrameDuration = duration
-                camera.unlockForConfiguration()
             } catch {
-                print("Thermal frame rate adjustment failed: \(error)")
+                Log.camera.error("thermal frame rate adjustment failed: \(error.localizedDescription)")
             }
         }
     }
@@ -194,8 +284,45 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Runtime errors
+
+    /// Apple recommends restarting the session after the media services were reset.
+    private func startRuntimeErrorObservation() {
+        guard runtimeErrorObserver == nil else { return }
+        runtimeErrorObserver = NotificationCenter.default.addObserver(
+            forName: .AVCaptureSessionRuntimeError,
+            object: captureSession,
+            queue: nil
+        ) { [weak self] notification in
+            guard let self,
+                  let avError = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError else { return }
+            Log.camera.error("capture session runtime error: \(avError.localizedDescription)")
+            guard avError.code == .mediaServicesWereReset else { return }
+            self.sessionQueue.async {
+                if !self.captureSession.isRunning {
+                    self.captureSession.startRunning()
+                }
+            }
+        }
+    }
+
     deinit {
         stopThermalMonitoring()
+        if let observer = runtimeErrorObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+}
+
+private extension ThermalLevel {
+    init(_ state: ProcessInfo.ThermalState) {
+        switch state {
+        case .nominal: self = .nominal
+        case .fair: self = .fair
+        case .serious: self = .serious
+        case .critical: self = .critical
+        @unknown default: self = .nominal
+        }
     }
 }
 
@@ -204,6 +331,7 @@ final class CameraManager: NSObject, ObservableObject {
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate,
                           AVCaptureAudioDataOutputSampleBufferDelegate {
 
+    // Delegate callbacks arrive on `bufferQueue`.
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
@@ -220,11 +348,5 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate,
             }
             onAudioSampleBuffer?(sampleBuffer)
         }
-    }
-
-    func captureOutput(_ output: AVCaptureOutput,
-                       didDrop sampleBuffer: CMSampleBuffer,
-                       from connection: AVCaptureConnection) {
-        // Dropped frames — could log for diagnostics
     }
 }

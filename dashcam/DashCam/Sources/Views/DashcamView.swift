@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import DashCamCore
 
 struct DashcamView: View {
     @StateObject private var viewModel = DashcamViewModel()
@@ -15,6 +16,10 @@ struct DashcamView: View {
                 topOverlay
                 Spacer()
                 bottomOverlay
+            }
+
+            if let cameraError = viewModel.cameraError {
+                cameraErrorCard(cameraError)
             }
 
             if viewModel.collisionDetected {
@@ -36,8 +41,10 @@ struct DashcamView: View {
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .modifier(HidePersistentOverlaysModifier())
-        .onChange(of: scenePhase) { newPhase in
-            if newPhase == .active && viewModel.recordingState == .paused {
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            viewModel.refreshCameraAvailability()
+            if viewModel.recordingState == .paused {
                 viewModel.startRecording()
             }
         }
@@ -123,9 +130,15 @@ struct DashcamView: View {
                     Text("\(Int(viewModel.currentSpeed))")
                         .font(.system(size: 32, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
-                    Text("km/h")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.6))
+                    if viewModel.isLocationDenied {
+                        Text("hud.gpsOff")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.yellow.opacity(0.8))
+                    } else {
+                        Text("km/h")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
                 }
 
                 Spacer()
@@ -180,6 +193,8 @@ struct DashcamView: View {
                     }
                 }
             }
+            .disabled(viewModel.cameraError == .cameraUnavailable)
+            .opacity(viewModel.cameraError == .cameraUnavailable ? 0.4 : 1)
             .padding(.bottom, 8)
 
             HStack {
@@ -219,6 +234,30 @@ struct DashcamView: View {
         }
         .transition(.opacity)
         .animation(.easeInOut, value: viewModel.collisionDetected)
+    }
+
+    private func cameraErrorCard(_ error: CameraError) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "video.slash.fill")
+                .font(.system(size: 32))
+                .foregroundColor(.white.opacity(0.9))
+            Text(error.message)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+            if error.canOpenSettings {
+                Button("camera.openSettings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: 420)
+        .background(Color.black.opacity(0.75))
+        .cornerRadius(12)
     }
 
     private var storageWarning: some View {
