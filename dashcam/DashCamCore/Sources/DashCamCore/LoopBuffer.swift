@@ -49,6 +49,15 @@ public struct LoopBuffer: Equatable, Sendable {
         return splitHeld(removed)
     }
 
+    /// Removes only the saved snapshot, preserving footage recorded during the export.
+    @discardableResult
+    public mutating func remove(_ ids: [UUID]) -> [Segment] {
+        let selected = Set(ids)
+        let removed = segments.filter { selected.contains($0.id) }
+        segments.removeAll { selected.contains($0.id) }
+        return splitHeld(removed)
+    }
+
     /// Protects the given segments' files from deletion until `release(_:)`.
     public mutating func hold(_ ids: [UUID]) {
         for id in ids {

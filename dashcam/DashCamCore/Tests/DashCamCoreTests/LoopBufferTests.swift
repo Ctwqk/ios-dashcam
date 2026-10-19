@@ -128,6 +128,37 @@ final class LoopBufferTests: XCTestCase {
         XCTAssertTrue(buffer.release([UUID()]).isEmpty)
     }
 
+    func testSuccessfulSaveRemovesOnlyItsSnapshot() {
+        var buffer = LoopBuffer(maxSegments: 5)
+        let segments = makeSegments(3)
+        buffer.append(segments[0])
+        buffer.append(segments[1])
+        let snapshot = buffer.segments.map(\.id)
+        buffer.hold(snapshot)
+        buffer.append(segments[2]) // Recording resumed while Photos was saving.
+
+        XCTAssertTrue(buffer.remove(snapshot).isEmpty)
+        XCTAssertEqual(buffer.segments.map(\.id), [segments[2].id])
+        XCTAssertEqual(buffer.release(snapshot).map(\.id), snapshot)
+        XCTAssertTrue(buffer.remove(snapshot).isEmpty)
+    }
+
+    func testSavedSnapshotStillHonorsAnOverlappingExport() {
+        var buffer = LoopBuffer(maxSegments: 2)
+        let segments = makeSegments(3)
+        buffer.append(segments[0])
+        buffer.append(segments[1])
+        let snapshot = buffer.segments.map(\.id)
+        buffer.hold(snapshot)
+        buffer.hold(snapshot)
+        buffer.append(segments[2]) // First saved segment is already evicted.
+
+        XCTAssertTrue(buffer.remove(snapshot).isEmpty)
+        XCTAssertTrue(buffer.release(snapshot).isEmpty)
+        XCTAssertEqual(buffer.release(snapshot).map(\.id), snapshot)
+        XCTAssertEqual(buffer.segments.map(\.id), [segments[2].id])
+    }
+
     // MARK: - Policy
 
     func testMaxSegmentsCoversTheBufferDuration() {

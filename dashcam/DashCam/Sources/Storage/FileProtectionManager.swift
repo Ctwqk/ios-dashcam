@@ -20,6 +20,7 @@ final class FileProtectionManager: ObservableObject {
     @Published private(set) var isSaving = false
 
     private let fileManager = FileManager.default
+    private let directory: URL
 
     /// Background queue for file cleanup I/O
     private let ioQueue = DispatchQueue(label: "com.dashcam.protection.io", qos: .utility)
@@ -30,10 +31,16 @@ final class FileProtectionManager: ObservableObject {
         case photosSaveFailed
     }
 
-    init() {
+    init(directory: URL = FileProtectionManager.protectedDirectory) {
+        self.directory = directory
         ensureDirectory()
-        ioQueue.async { [weak self] in
-            self?.cleanProtectedDirectory()
+        // Snapshot old exports before accepting new ones; delayed cleanup must never
+        // enumerate and delete a file created by an export from this session.
+        let leftovers = (try? fileManager.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        )) ?? []
+        ioQueue.async {
+            for file in leftovers { try? FileManager.default.removeItem(at: file) }
         }
     }
 
@@ -104,7 +111,7 @@ final class FileProtectionManager: ObservableObject {
 
     // MARK: - Private: Merge
 
-    private func mergeFiles(_ urls: [URL], outputName: String) async throws -> URL {
+    func mergeFiles(_ urls: [URL], outputName: String) async throws -> URL {
         let composition = AVMutableComposition()
 
         guard let videoTrack = composition.addMutableTrack(
@@ -125,10 +132,10 @@ final class FileProtectionManager: ObservableObject {
         for url in urls {
             let asset = AVURLAsset(url: url)
 
-            // A segment that cannot be read (for example one cut short by a crash) is skipped.
-            guard let assetVideoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first else {
-                Log.storage.warning("skipping unreadable segment \(url.lastPathComponent)")
-                continue
+            // Never report a partial clip as a successful save: the caller would then
+            // delete the entire snapshot, including footage omitted from the export.
+            guard let assetVideoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+                throw SaveError.mergeFailed
             }
             let duration = try await asset.load(.duration)
 
@@ -140,8 +147,8 @@ final class FileProtectionManager: ObservableObject {
 
             // Audio is optional: some segments might not have it.
             if let audioTrack,
-               let assetAudioTrack = (try? await asset.loadTracks(withMediaType: .audio))?.first {
-                try? audioTrack.insertTimeRange(
+               let assetAudioTrack = try await asset.loadTracks(withMediaType: .audio).first {
+                try audioTrack.insertTimeRange(
                     CMTimeRange(start: .zero, duration: duration),
                     of: assetAudioTrack,
                     at: insertTime
@@ -160,7 +167,7 @@ final class FileProtectionManager: ObservableObject {
         guard insertedAny else { throw SaveError.mergeFailed }
 
         // Export merged composition
-        let outputURL = Self.protectedDirectory.appendingPathComponent(outputName)
+        let outputURL = directory.appendingPathComponent(outputName)
         try? fileManager.removeItem(at: outputURL)
 
         guard let exporter = AVAssetExportSession(
@@ -201,9 +208,10 @@ final class FileProtectionManager: ObservableObject {
 
         do {
             try await PHPhotoLibrary.shared().performChanges {
-                let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
-                request?.creationDate = creationDate
-                request?.location = location
+                let request = PHAssetCreationRequest.forAsset()
+                request.addResource(with: .video, fileURL: fileURL, options: nil)
+                request.creationDate = creationDate
+                request.location = location
             }
         } catch {
             Log.storage.error("Photos rejected the clip: \(error.localizedDescription)")
@@ -215,21 +223,9 @@ final class FileProtectionManager: ObservableObject {
 
     private func ensureDirectory() {
         try? fileManager.createDirectory(
-            at: Self.protectedDirectory,
+            at: directory,
             withIntermediateDirectories: true
         )
     }
 
-    /// Remove leftover exports from previous sessions.
-    private func cleanProtectedDirectory() {
-        guard let files = try? fileManager.contentsOfDirectory(
-            at: Self.protectedDirectory,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else { return }
-
-        for file in files {
-            try? fileManager.removeItem(at: file)
-        }
-    }
 }

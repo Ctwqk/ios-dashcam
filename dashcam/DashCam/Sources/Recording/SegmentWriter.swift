@@ -120,6 +120,7 @@ final class SegmentWriter {
     @discardableResult
     func appendVideoBuffer(_ sampleBuffer: CMSampleBuffer) -> Bool {
         lock.withLock {
+            refreshFailure()
             if case .idle = stateStorage {
                 // First video buffer: start the writing session
                 guard assetWriter.startWriting() else {
@@ -133,9 +134,7 @@ final class SegmentWriter {
             guard case .writing = stateStorage, videoInput.isReadyForMoreMediaData else { return false }
             if videoInput.append(sampleBuffer) { return true }
 
-            if assetWriter.status == .failed {
-                stateStorage = .failed(assetWriter.error ?? WriterError.appendFailed)
-            }
+            refreshFailure()
             return false
         }
     }
@@ -144,9 +143,12 @@ final class SegmentWriter {
     @discardableResult
     func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) -> Bool {
         lock.withLock {
+            refreshFailure()
             guard case .writing = stateStorage,
                   let audioInput, audioInput.isReadyForMoreMediaData else { return false }
-            return audioInput.append(sampleBuffer)
+            let appended = audioInput.append(sampleBuffer)
+            if !appended { refreshFailure() }
+            return appended
         }
     }
 
@@ -161,6 +163,7 @@ final class SegmentWriter {
         }
 
         let action: Action = lock.withLock {
+            refreshFailure()
             switch stateStorage {
             case .idle:
                 // Never received any buffers: there is no file to keep.
@@ -213,6 +216,14 @@ final class SegmentWriter {
     }
 
     // MARK: - Private
+
+    /// A writer can fail asynchronously or while appending audio. Inspect its status
+    /// before readiness checks, which stay false once the writer has failed.
+    private func refreshFailure() {
+        if assetWriter.status == .failed || assetWriter.status == .cancelled {
+            stateStorage = .failed(assetWriter.error ?? WriterError.appendFailed)
+        }
+    }
 
     private func closedSegment() -> Segment {
         var closed = segment

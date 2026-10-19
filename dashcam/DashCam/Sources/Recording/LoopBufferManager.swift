@@ -94,11 +94,11 @@ final class LoopBufferManager: ObservableObject {
         return ExportRequest(segmentIDs: ids, fileURLs: available.map(url(for:)), metadata: metadata)
     }
 
-    /// Releases an export snapshot. With `clearBuffer`, the buffer is emptied as well
-    /// (used after a successful manual save).
+    /// Releases an export snapshot. After a successful manual save, only that snapshot
+    /// is removed; a new recording may already have added more footage to the loop.
     func endExport(_ request: ExportRequest, clearBuffer: Bool) {
         if clearBuffer {
-            delete(buffer.removeAll())
+            delete(buffer.remove(request.segmentIDs))
         }
         delete(buffer.release(request.segmentIDs))
         publish()

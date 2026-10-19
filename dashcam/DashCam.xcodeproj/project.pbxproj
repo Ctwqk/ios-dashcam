@@ -27,6 +27,12 @@
 		A10000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000015 /* Assets.xcassets */; };
 		A90000001 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000002 /* Logging.swift */; };
 		A90000010 /* DashCamCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000012 /* DashCamCore */; };
+		E10000000000000000000014 /* AutoRestartService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBEB2F67EA1F00D15C2D /* AutoRestartService.swift */; };
+		E10000000000000000000015 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBDF2F67E9BC00D15C2D /* SegmentWriter.swift */; };
+		E10000000000000000000016 /* FileProtectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBE72F67EA0200D15C2D /* FileProtectionManager.swift */; };
+		E10000000000000000000017 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000002 /* Logging.swift */; };
+		E10000000000000000000019 /* MediaPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000000000000000000000B /* MediaPipelineTests.swift */; };
+		E1000000000000000000001E /* DashCamCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000012 /* DashCamCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +57,8 @@
 		A20000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000099 /* DashCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DashCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A90000002 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
+		E1000000000000000000000B /* MediaPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipelineTests.swift; sourceTree = "<group>"; };
+		E10000000000000000000001 /* DashCamIOTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = DashCamIOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +70,12 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E10000000000000000000003 /* Frameworks */ = {
+            isa = PBXFrameworksBuildPhase;
+            buildActionMask = 2147483647;
+            files = (E1000000000000000000001E /* DashCamCore in Frameworks */);
+            runOnlyForDeploymentPostprocessing = 0;
+        };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -69,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				A40000002 /* DashCam */,
+				E10000000000000000000002 /* DashCamIOTests */,
 				A40000011 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -168,6 +183,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000099 /* DashCam.app */,
+				E10000000000000000000001 /* DashCamIOTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -180,6 +196,12 @@
 			path = Support;
 			sourceTree = "<group>";
 		};
+		E10000000000000000000002 /* DashCamIOTests */ = {
+            isa = PBXGroup;
+            children = (E1000000000000000000000B);
+            path = DashCamIOTests;
+            sourceTree = "<group>";
+        };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -203,6 +225,18 @@
 			productReference = A20000099 /* DashCam.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E10000000000000000000005 /* DashCamIOTests */ = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = E10000000000000000000006;
+            buildPhases = (E10000000000000000000004, E10000000000000000000003);
+            buildRules = ();
+            dependencies = ();
+            name = DashCamIOTests;
+            packageProductDependencies = (A90000012 /* DashCamCore */);
+            productName = DashCamIOTests;
+            productReference = E10000000000000000000001 /* DashCamIOTests.xctest */;
+            productType = "com.apple.product-type.bundle.unit-test";
+        };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -235,6 +269,7 @@
 			projectRoot = "";
 			targets = (
 				A50000001 /* DashCam */,
+				E10000000000000000000005 /* DashCamIOTests */,
 			);
 		};
 /* End PBXProject section */
@@ -276,6 +311,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E10000000000000000000004 /* Sources */ = {
+            isa = PBXSourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+                E10000000000000000000014 /* AutoRestartService.swift in Sources */,
+                E10000000000000000000015 /* SegmentWriter.swift in Sources */,
+                E10000000000000000000016 /* FileProtectionManager.swift in Sources */,
+                E10000000000000000000017 /* Logging.swift in Sources */,
+                E10000000000000000000019 /* MediaPipelineTests.swift in Sources */,
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -381,6 +428,32 @@
 			};
 			name = Release;
 		};
+		E10000000000000000000007 /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                GENERATE_INFOPLIST_FILE = YES;
+                PRODUCT_BUNDLE_IDENTIFIER = com.constructure.dashcam.io-tests;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+                SWIFT_VERSION = 5.0;
+                TARGETED_DEVICE_FAMILY = 1;
+                LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+            };
+            name = Debug;
+        };
+		E10000000000000000000008 /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                GENERATE_INFOPLIST_FILE = YES;
+                PRODUCT_BUNDLE_IDENTIFIER = com.constructure.dashcam.io-tests;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+                SWIFT_VERSION = 5.0;
+                TARGETED_DEVICE_FAMILY = 1;
+                LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+            };
+            name = Release;
+        };
 /* End XCBuildConfiguration section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -416,6 +489,12 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		E10000000000000000000006 /* Build configuration list for DashCamIOTests */ = {
+            isa = XCConfigurationList;
+            buildConfigurations = (E10000000000000000000007 /* Debug */, E10000000000000000000008 /* Release */);
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
 /* End XCConfigurationList section */
 	};
 	rootObject = A50000099 /* Project object */;
