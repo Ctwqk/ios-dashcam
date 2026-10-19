@@ -5,7 +5,8 @@ import DashCamCore
 struct DashcamView: View {
     @StateObject private var viewModel = DashcamViewModel()
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showSettings = false
+    // `-showSettings` opens the Settings sheet at launch; the CI screenshot job uses it.
+    @State private var showSettings = ProcessInfo.processInfo.arguments.contains("-showSettings")
 
     var body: some View {
         ZStack {

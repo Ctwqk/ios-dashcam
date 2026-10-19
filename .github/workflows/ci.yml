@@ -9,8 +9,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: SwiftLint
+    runs-on: ubuntu-latest
+    container: ghcr.io/realm/swiftlint:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swiftlint lint --reporter github-actions-logging
+
   core-tests:
-    name: DashCamCore unit tests (macOS host)
+    name: DashCamCore unit tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,27 +26,31 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
-      - name: swift test
-        working-directory: dashcam/DashCamCore
-        run: swift test --parallel
+      - name: swift test (macOS host)
+        run: make test-core
+      - name: xcodebuild test (iOS Simulator)
+        run: |
+          set -o pipefail
+          make test-core-ios | tee test-ios.log | grep -E "Test Suite 'All tests'|Executed|TEST (SUCCEEDED|FAILED)" || true
+          grep -q "TEST SUCCEEDED" test-ios.log
 
   app:
     name: Build app for iOS Simulator
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Toolchain info
-        run: |
-          xcodebuild -version
-          xcrun simctl list devices available | head -40
-      - name: Build (iOS Simulator)
+      - name: Build (iOS Simulator, no code signing)
         run: |
           set -o pipefail
-          xcodebuild build \
-            -project dashcam/DashCam.xcodeproj \
-            -scheme DashCam \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO | tee build.log | tail -5
+          make build | tee build.log | tail -5
       - name: Compiler warnings
         if: always()
         run: grep -E "warning:" build.log | sort -u | head -60 || true
+      - name: Launch in simulator and capture screenshots
+        run: scripts/capture-screenshots.sh build/DerivedData build/screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-screenshots
+          path: build/screenshots/*.png
+          if-no-files-found: warn
