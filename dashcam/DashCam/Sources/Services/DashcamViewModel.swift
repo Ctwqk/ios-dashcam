@@ -62,7 +62,7 @@ final class DashcamViewModel: ObservableObject {
         self.collisionDetector = CollisionDetector(config: config)
         self.fileProtection = FileProtectionManager()
         self.storageManager = StorageManager()
-        self.autoRestart = AutoRestartService()
+        self.autoRestart = AutoRestartService(session: cameraManager.captureSession)
         self.locationManager = SpeedTracker()
 
         setupBindings()
@@ -74,7 +74,9 @@ final class DashcamViewModel: ObservableObject {
     // MARK: - Public Actions
 
     func startRecording() {
-        guard recordingState != .recording, !isStarting, !isStopping else { return }
+        guard recordingState != .recording, !isStarting, !isStopping,
+              UIApplication.shared.applicationState == .active,
+              autoRestart.interruptionReason == nil else { return }
         isStarting = true
 
         cameraManager.configureAndStart(with: config) { [weak self] isRunning in
@@ -85,6 +87,14 @@ final class DashcamViewModel: ObservableObject {
                 let message = self.cameraManager.error?.message
                     ?? NSLocalizedString("camera.error.unavailable", comment: "")
                 self.recordingState = .error(message)
+                return
+            }
+
+            // Permission prompts/session setup can finish after the app was backgrounded.
+            guard UIApplication.shared.applicationState == .active else {
+                self.recordingState = .paused
+                self.autoRestart.startObserving()
+                self.autoRestart.setRecordingActive(true)
                 return
             }
 

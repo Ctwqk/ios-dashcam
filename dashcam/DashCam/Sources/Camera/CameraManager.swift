@@ -85,8 +85,6 @@ final class CameraManager: NSObject, ObservableObject {
     /// Asks for camera (required) and microphone (optional) access, configures the session
     /// once and starts it. `completion` runs on the main queue with `true` if the session is running.
     func configureAndStart(with config: DashcamConfig, completion: @escaping (Bool) -> Void) {
-        currentConfig = config
-
         ensureAccess(for: .video) { [weak self] videoGranted in
             guard let self else { return }
             guard videoGranted else {
@@ -99,6 +97,7 @@ final class CameraManager: NSObject, ObservableObject {
             self.ensureAccess(for: .audio) { [weak self] audioGranted in
                 guard let self else { return }
                 self.sessionQueue.async {
+                    self.currentConfig = config
                     let failure = self.setupSession(config: config, includeAudio: audioGranted)
                     if failure == nil, !self.captureSession.isRunning {
                         self.captureSession.startRunning()
@@ -167,7 +166,10 @@ final class CameraManager: NSObject, ObservableObject {
         captureSession.addInput(input)
         videoDeviceInput = input
 
-        configureDevice(camera, frameRate: config.frameRate)
+        configureDevice(camera, frameRate: ThermalPolicy.targetFrameRate(
+            baseFrameRate: config.frameRate,
+            thermalLevel: ThermalLevel(ProcessInfo.processInfo.thermalState)
+        ))
 
         // Audio input (optional)
         if includeAudio,
@@ -245,6 +247,7 @@ final class CameraManager: NSObject, ObservableObject {
     // MARK: - Thermal Monitoring
 
     private func startThermalMonitoring() {
+        handleThermalChange()
         guard thermalObserver == nil else { return }
         thermalObserver = NotificationCenter.default.addObserver(
             forName: ProcessInfo.thermalStateDidChangeNotification,
@@ -256,15 +259,13 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     private func handleThermalChange() {
-        guard let camera = videoDeviceInput?.device,
-              let config = currentConfig else { return }
-
-        let targetFPS = ThermalPolicy.targetFrameRate(
-            baseFrameRate: config.frameRate,
-            thermalLevel: ThermalLevel(ProcessInfo.processInfo.thermalState)
-        )
-
-        sessionQueue.async {
+        sessionQueue.async { [weak self] in
+            guard let self, let camera = self.videoDeviceInput?.device,
+                  let config = self.currentConfig else { return }
+            let targetFPS = ThermalPolicy.targetFrameRate(
+                baseFrameRate: config.frameRate,
+                thermalLevel: ThermalLevel(ProcessInfo.processInfo.thermalState)
+            )
             do {
                 try camera.lockForConfiguration()
                 defer { camera.unlockForConfiguration() }

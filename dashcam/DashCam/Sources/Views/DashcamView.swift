@@ -45,9 +45,6 @@ struct DashcamView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             viewModel.refreshCameraAvailability()
-            if viewModel.recordingState == .paused {
-                viewModel.startRecording()
-            }
         }
         .alert(NSLocalizedString("alert.stopRecording", comment: ""), isPresented: $viewModel.showSaveDialog) {
             Button(NSLocalizedString("alert.saveToPhotos", comment: ""), role: nil) {
@@ -227,7 +224,7 @@ struct DashcamView: View {
                 .padding(.vertical, 12)
                 .background(Color.red)
                 .cornerRadius(8)
-            Text("hud.savedToPhotos")
+            Text("status.collisionSaving")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.8))
                 .padding(.top, 4)

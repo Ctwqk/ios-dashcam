@@ -2,9 +2,8 @@ import AVFoundation
 import UIKit
 import Combine
 
-/// Watches for anything that stops the camera (phone call, another app using the mic,
-/// thermal pressure, the app going to the background) and asks the view model to stop,
-/// then to resume once the interruption is over.
+/// Tracks app, capture-session and runtime interruptions independently. Recording may
+/// resume only after every interruption has ended and the app is active.
 final class AutoRestartService: ObservableObject {
     @Published private(set) var interruptionReason: String?
     @Published private(set) var isRecovering = false
@@ -12,60 +11,68 @@ final class AutoRestartService: ObservableObject {
     var onShouldRestart: (() -> Void)?
     var onShouldStop: (() -> Void)?
 
-    /// Tracks whether recording was active before an interruption occurred.
+    private enum Cause: CaseIterable { case background, capture, runtime }
+    private var reasons: [Cause: String] = [:]
     private var wasRecordingBeforeInterruption = false
+    private var recoveryGeneration = 0
+    private var runtimeGeneration = 0
     private var cancellables = Set<AnyCancellable>()
+    private let session: AVCaptureSession
+    private let notificationCenter: NotificationCenter
+    private let applicationIsActive: () -> Bool
+    private let recoveryDelay: TimeInterval
 
-    /// Safe to call repeatedly: earlier subscriptions are dropped first, otherwise every
-    /// restart would stack another copy of each observer.
+    init(
+        session: AVCaptureSession,
+        notificationCenter: NotificationCenter = .default,
+        recoveryDelay: TimeInterval = 0.5,
+        applicationIsActive: @escaping () -> Bool = { UIApplication.shared.applicationState == .active }
+    ) {
+        self.session = session
+        self.notificationCenter = notificationCenter
+        self.recoveryDelay = recoveryDelay
+        self.applicationIsActive = applicationIsActive
+    }
+
+    /// Safe to call repeatedly without stacking subscriptions.
     func startObserving() {
         cancellables.removeAll()
+        cancelRecovery()
 
-        // AVCaptureSession interruption
-        NotificationCenter.default.publisher(for: .AVCaptureSessionWasInterrupted)
+        notificationCenter.publisher(for: .AVCaptureSessionWasInterrupted, object: session)
             .compactMap { $0.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int }
             .compactMap { AVCaptureSession.InterruptionReason(rawValue: $0) }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] reason in
-                self?.handleInterruption(reason)
-            }
+            .sink { [weak self] reason in self?.handleInterruption(reason) }
             .store(in: &cancellables)
 
-        // AVCaptureSession interruption ended
-        NotificationCenter.default.publisher(for: .AVCaptureSessionInterruptionEnded)
+        notificationCenter.publisher(for: .AVCaptureSessionInterruptionEnded, object: session)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleInterruptionEnded()
-            }
+            .sink { [weak self] _ in self?.end(.capture) }
             .store(in: &cancellables)
 
-        // App lifecycle. Only a real trip to the background stops recording: the app also
-        // resigns active for permission prompts, Control Center and notification banners,
-        // none of which interrupt the camera.
-        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+        // Permission prompts resign active but do not background the app.
+        notificationCenter.publisher(for: UIApplication.didEnterBackgroundNotification)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.interruptionReason = "App moved to background"
-                self?.onShouldStop?()
-            }
+            .sink { [weak self] _ in self?.begin(.background, message: "App moved to background") }
             .store(in: &cancellables)
 
-        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+        notificationCenter.publisher(for: UIApplication.didBecomeActiveNotification)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleInterruptionEnded()
-            }
+            .sink { [weak self] _ in self?.end(.background) }
             .store(in: &cancellables)
 
-        // Runtime errors
-        NotificationCenter.default.publisher(for: .AVCaptureSessionRuntimeError)
+        notificationCenter.publisher(for: .AVCaptureSessionRuntimeError, object: session)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                if let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError {
-                    self?.interruptionReason = "Runtime error: \(error.localizedDescription)"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        self?.handleInterruptionEnded()
-                    }
+                guard let self,
+                      let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError else { return }
+                self.begin(.runtime, message: "Runtime error: \(error.localizedDescription)")
+                self.runtimeGeneration += 1
+                let generation = self.runtimeGeneration
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    guard let self, self.runtimeGeneration == generation else { return }
+                    self.end(.runtime)
                 }
             }
             .store(in: &cancellables)
@@ -73,48 +80,57 @@ final class AutoRestartService: ObservableObject {
 
     func stopObserving() {
         cancellables.removeAll()
+        wasRecordingBeforeInterruption = false
+        runtimeGeneration += 1
+        cancelRecovery()
+        reasons.removeAll()
         interruptionReason = nil
     }
 
     func setRecordingActive(_ active: Bool) {
         wasRecordingBeforeInterruption = active
+        if !active { cancelRecovery() }
     }
 
-    // MARK: - Private
-
     private func handleInterruption(_ reason: AVCaptureSession.InterruptionReason) {
+        let message: String
         switch reason {
-        case .videoDeviceNotAvailableInBackground:
-            interruptionReason = "App in background"
-        case .audioDeviceInUseByAnotherClient:
-            interruptionReason = "Audio device in use"
-        case .videoDeviceNotAvailableWithMultipleForegroundApps:
-            interruptionReason = "Multi-app conflict"
-        case .videoDeviceNotAvailableDueToSystemPressure:
-            interruptionReason = "System thermal pressure"
-        default:
-            interruptionReason = "Recording interrupted"
+        case .videoDeviceNotAvailableInBackground: message = "App in background"
+        case .audioDeviceInUseByAnotherClient: message = "Audio device in use"
+        case .videoDeviceNotAvailableWithMultipleForegroundApps: message = "Multi-app conflict"
+        case .videoDeviceNotAvailableDueToSystemPressure: message = "System thermal pressure"
+        default: message = "Recording interrupted"
         }
+        begin(.capture, message: message)
+    }
+
+    private func begin(_ cause: Cause, message: String) {
+        cancelRecovery()
+        reasons[cause] = message
+        publishReason()
         onShouldStop?()
     }
 
-    private func handleInterruptionEnded() {
-        guard interruptionReason != nil else { return }
+    private func end(_ cause: Cause) {
+        reasons[cause] = nil
+        publishReason()
+        guard reasons.isEmpty, wasRecordingBeforeInterruption, applicationIsActive(), !isRecovering else { return }
         isRecovering = true
-        interruptionReason = nil
-
-        guard wasRecordingBeforeInterruption else {
-            isRecovering = false
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.isRecovering = false
-            self?.onShouldRestart?()
+        let generation = recoveryGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + recoveryDelay) { [weak self] in
+            guard let self, self.recoveryGeneration == generation else { return }
+            self.isRecovering = false
+            guard self.reasons.isEmpty, self.wasRecordingBeforeInterruption, self.applicationIsActive() else { return }
+            self.onShouldRestart?()
         }
     }
 
-    deinit {
-        cancellables.removeAll()
+    private func cancelRecovery() {
+        recoveryGeneration += 1
+        isRecovering = false
+    }
+
+    private func publishReason() {
+        interruptionReason = Cause.allCases.compactMap { reasons[$0] }.first
     }
 }

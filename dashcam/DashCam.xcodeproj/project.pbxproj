@@ -31,6 +31,7 @@
 		E10000000000000000000015 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBDF2F67E9BC00D15C2D /* SegmentWriter.swift */; };
 		E10000000000000000000016 /* FileProtectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C43FBE72F67EA0200D15C2D /* FileProtectionManager.swift */; };
 		E10000000000000000000017 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000002 /* Logging.swift */; };
+		E10000000000000000000018 /* InterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000000000000000000000A /* InterruptionTests.swift */; };
 		E10000000000000000000019 /* MediaPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000000000000000000000B /* MediaPipelineTests.swift */; };
 		E1000000000000000000001E /* DashCamCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000012 /* DashCamCore */; };
 /* End PBXBuildFile section */
@@ -57,6 +58,7 @@
 		A20000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000099 /* DashCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DashCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A90000002 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
+		E1000000000000000000000A /* InterruptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterruptionTests.swift; sourceTree = "<group>"; };
 		E1000000000000000000000B /* MediaPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipelineTests.swift; sourceTree = "<group>"; };
 		E10000000000000000000001 /* DashCamIOTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = DashCamIOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -198,7 +200,7 @@
 		};
 		E10000000000000000000002 /* DashCamIOTests */ = {
             isa = PBXGroup;
-            children = (E1000000000000000000000B);
+            children = (E1000000000000000000000A, E1000000000000000000000B);
             path = DashCamIOTests;
             sourceTree = "<group>";
         };
@@ -319,6 +321,7 @@
                 E10000000000000000000015 /* SegmentWriter.swift in Sources */,
                 E10000000000000000000016 /* FileProtectionManager.swift in Sources */,
                 E10000000000000000000017 /* Logging.swift in Sources */,
+                E10000000000000000000018 /* InterruptionTests.swift in Sources */,
                 E10000000000000000000019 /* MediaPipelineTests.swift in Sources */,
             );
             runOnlyForDeploymentPostprocessing = 0;
