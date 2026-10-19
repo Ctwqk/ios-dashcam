@@ -161,7 +161,7 @@ docs/              screenshots captured by CI
 ## Design notes and trade-offs
 
 - **Pure core, thin shell.** Anything that can be decided without a camera, UIKit or the file system (what to evict, when
-  an impact counts, how much space the loop may use, what a file is called) is a value type in `DashCamCore`; the app
+  an impact counts, how much space the loop may use, what a file is called) lives in `DashCamCore`; the app
   layer only owns I/O and threads. That is what makes the logic testable in CI, which has no camera.
 - **Whole-buffer export on collision.** On impact the entire loop (up to the configured length) is saved, not a window
   around the impact. It is simple and never cuts off the lead-up; the cost is long clips and a long merge for big loops.
