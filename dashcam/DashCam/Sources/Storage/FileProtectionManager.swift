@@ -54,29 +54,7 @@ final class FileProtectionManager: ObservableObject {
         DispatchQueue.main.async { self.isSaving = true }
 
         Task { [self] in
-            var temporaryFile: URL?
-            var failure: SaveError?
-
-            do {
-                let fileToSave: URL
-                if segmentURLs.count == 1 {
-                    fileToSave = segmentURLs[0]
-                } else {
-                    let merged = try await mergeFiles(segmentURLs, outputName: metadata.filename())
-                    temporaryFile = merged
-                    fileToSave = merged
-                }
-                try await saveFileToPhotos(fileToSave, creationDate: metadata.startDate, location: location)
-            } catch let error as SaveError {
-                failure = error
-            } catch {
-                Log.storage.error("saving to Photos failed: \(error.localizedDescription)")
-                failure = .mergeFailed
-            }
-
-            if let temporaryFile {
-                ioQueue.async { [fileManager] in try? fileManager.removeItem(at: temporaryFile) }
-            }
+            let failure = await export(segmentURLs, metadata: metadata, location: location)
 
             await MainActor.run {
                 isSaving = false
@@ -93,6 +71,34 @@ final class FileProtectionManager: ObservableObject {
                 }
                 completion(failure == nil, failure == nil ? segmentURLs.count : 0)
             }
+        }
+    }
+
+    /// Merges (if needed) and saves; returns `nil` on success. Temporary files are always removed.
+    private func export(_ segmentURLs: [URL], metadata: ClipMetadata, location: CLLocation?) async -> SaveError? {
+        var temporaryFile: URL?
+        defer {
+            if let temporaryFile {
+                ioQueue.async { try? FileManager.default.removeItem(at: temporaryFile) }
+            }
+        }
+
+        do {
+            let fileToSave: URL
+            if segmentURLs.count == 1 {
+                fileToSave = segmentURLs[0]
+            } else {
+                let merged = try await mergeFiles(segmentURLs, outputName: metadata.filename())
+                temporaryFile = merged
+                fileToSave = merged
+            }
+            try await saveFileToPhotos(fileToSave, creationDate: metadata.startDate, location: location)
+            return nil
+        } catch let error as SaveError {
+            return error
+        } catch {
+            Log.storage.error("export failed: \(error.localizedDescription)")
+            return .mergeFailed
         }
     }
 
