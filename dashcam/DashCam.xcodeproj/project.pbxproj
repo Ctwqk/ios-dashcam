@@ -47,10 +47,9 @@
 		9C43FBF52F67EA8100D15C2D /* DashcamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashcamView.swift; sourceTree = "<group>"; };
 		9C43FBF72F67EA8200D15C2D /* DashCamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashCamApp.swift; sourceTree = "<group>"; };
 		9C43FBF92F67F11200D15C2D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
-		9C43FBFB2F6916BB00D15C2D /* Untitled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Untitled.swift; sourceTree = "<group>"; };
 		A20000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A20000099 /* DashCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = DashCam.app; path = "/Users/suda/dashcam/dashcam/build/Debug-iphoneos/DashCam.app"; sourceTree = "<absolute>"; };
+		A20000099 /* DashCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DashCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,7 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				A40000002 /* DashCam */,
-				9C43FBFB2F6916BB00D15C2D /* Untitled.swift */,
+				A40000011 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
@@ -163,6 +162,14 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		A40000011 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000099 /* DashCam.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -207,7 +214,7 @@
 				Base,
 			);
 			mainGroup = A40000001;
-			productRefGroup = A40000001;
+			productRefGroup = A40000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

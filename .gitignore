@@ -24,3 +24,19 @@ Carthage/DerivedData/
 .swiftpm/config/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .build/
+
+# Build / test output
+*.xcresult
+*.log
+*.profraw
+
+# Swift packages (DashCamCore)
+**/.build/
+**/.swiftpm/
+Package.resolved
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
