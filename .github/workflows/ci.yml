@@ -31,8 +31,7 @@ jobs:
       - name: xcodebuild test (iOS Simulator)
         run: |
           set -o pipefail
-          make test-core-ios | tee test-ios.log | grep -E "Test Suite 'All tests'|Executed|TEST (SUCCEEDED|FAILED)" || true
-          grep -q "TEST SUCCEEDED" test-ios.log
+          make test-core-ios | tee test-ios.log | tail -30
 
   app:
     name: Build app for iOS Simulator
@@ -51,7 +50,7 @@ jobs:
           set -o pipefail
           make test-app-ios | tee test-app.log | tail -30
       - name: Launch in simulator and capture screenshots
-        run: scripts/capture-screenshots.sh build/DerivedData build/screenshots
+        run: make screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

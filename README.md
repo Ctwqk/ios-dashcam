@@ -18,13 +18,13 @@ simulator has no camera, so the live preview is replaced by the app's "camera un
 
 - **Loop recording**: 60-second MP4 segments (720p, 30 fps, HEVC, `AVAssetWriter`). Only the newest 15 to 360 minutes
   (configurable) are kept; older segments are deleted as new ones arrive. Rotation hands the next incoming video frame to
-  a fresh writer, so no video frames are dropped at a segment boundary.
+  a fresh writer. Encoder backpressure or capture overload can still drop frames; gap-free capture has not been verified.
 - **Collision detection**: the accelerometer is sampled at 50 Hz. A sample whose magnitude reaches the threshold
   (1.5 to 6.0 g, default 3.0 g, adjustable in Settings) raises one event; further samples are ignored for 10 seconds.
   On a collision the current segment is closed half a second later and the **whole buffer** is merged into one clip and
   saved to Photos while recording continues.
-- **Manual save**: tapping stop offers *Save to Photos* (merge everything, then clear the buffer once the save has
-  succeeded), *Discard*, or *Continue Recording*.
+- **Manual save**: tapping stop offers *Save to Photos* (merge a snapshot, then remove only the saved segments),
+  *Discard*, or *Continue Recording*. Footage recorded during an export stays in the loop.
 - **HUD**: recording state and elapsed time, GPS speed (CoreLocation), segments in the buffer, free disk space,
   live g-force, collision and low-storage banners.
 - **Storage management**: a low-storage warning below 1 GiB; when free space drops below 512 MiB the loop is shortened
@@ -82,7 +82,8 @@ layer that owns sensors, threads and files.
 **Threading model.** Frames arrive on one serial queue (`bufferQueue`). The active `AVAssetWriter`, the "accepting
 frames" flag and the sample-buffer callbacks are confined to that queue; stop and rotate requests are dispatched onto it,
 and `SegmentWriter` guards its state with a lock so a buffer can never be appended after its input was marked finished.
-Session configuration runs on a separate session queue; UI state lives on the main actor.
+Writer results are delivered in recording order, and stop waits for every pending finalization before saving or
+discarding. Session configuration and thermal changes run on a separate session queue; UI state lives on the main actor.
 
 **Exports hold their files.** Merging a 6-hour buffer can take longer than a segment lasts. `LoopBuffer` therefore
 supports reference-counted *holds*: a segment evicted from the loop while an export is reading it leaves the buffer
@@ -103,7 +104,8 @@ background, so recording pauses when the app is backgrounded.
 
 ## Build and run
 
-Requirements: macOS with Xcode 15 or newer (CI uses Xcode 26.6); iOS 17+ deployment target.
+Requirements: macOS with Xcode 16 or newer (the export API requires the iOS 18 SDK; CI uses Xcode 26.6).
+The app still supports iOS 17 through an older export API at runtime.
 
 ```bash
 # Build for the iOS Simulator without code signing (this is what CI does)
@@ -117,11 +119,13 @@ contains the original author's team ID). The camera, motion sensors and GPS only
 
 ## Tests
 
-The decision logic lives in the `dashcam/DashCamCore` Swift package (Foundation only, 70 XCTest cases).
+The decision logic lives in the `dashcam/DashCamCore` Swift package (Foundation only, 79 XCTest cases).
+Another 9 simulator tests exercise the production media and interruption adapters with generated samples and notifications.
 
 ```bash
 make test-core        # swift test on the macOS host (also works on Linux: cd dashcam/DashCamCore && swift test)
 make test-core-ios    # the same tests inside an iOS Simulator
+make test-app-ios     # synthetic video writing/merging and interruption recovery in an iOS Simulator
 make lint             # SwiftLint (config in .swiftlint.yml)
 make screenshots      # build, launch in a simulator, write build/screenshots/*.png
 ```
@@ -130,7 +134,9 @@ What the tests cover: loop-buffer eviction order and limits, export holds (inclu
 threshold, de-duplication of one impact sampled at 50 Hz, and the debounce window; storage quota maths (how many segments
 to drop for a given shortfall) and orphan-file selection; file-name format, round-trip parsing and rejection of foreign
 files; configuration persistence and range validation; encoder bit-rate based size estimates; thermal frame-rate
-throttling; clip metadata.
+throttling; clip metadata; out-of-order writer completion, stop barriers, and snapshot-only cleanup after a save.
+The simulator adapter tests verify playable H.264 output, a two-segment passthrough merge, rejection of corrupt input,
+overlapping interruptions, cancelled restarts, observer registration, and runtime-error pausing.
 
 ## Project layout
 
@@ -146,9 +152,10 @@ dashcam/
     Views/         DashcamView, SettingsView, CameraPreviewView
     Support/       Logging
   DashCamCore/     Swift package: pure logic + tests (Sources/, Tests/)
+  DashCamIOTests/  Tests compiling production adapters, without a camera or Photos permission
 scripts/           simulator selection and screenshot capture
 docs/              screenshots captured by CI
-.github/workflows/ci.yml   SwiftLint, unit tests (macOS + iOS Simulator), app build, screenshots
+.github/workflows/ci.yml   SwiftLint, core + adapter tests, app build, screenshots
 ```
 
 ## Design notes and trade-offs
@@ -164,7 +171,8 @@ docs/              screenshots captured by CI
   H.264 4 and 8 Mbps), and the size estimate in Settings is computed from the same numbers.
 - **Sensor timestamps for debouncing.** The collision policy uses the sensor's monotonic timestamps instead of `Date()`,
   which keeps it deterministic and unit-testable.
-- **Keep footage if the save fails.** The buffer is cleared only after Photos accepted the clip.
+- **Keep footage if the save fails.** Unreadable segments fail the export instead of silently producing a partial clip.
+  Only the saved snapshot is removed after Photos accepts the clip.
 
 ## Known limitations and roadmap
 
@@ -183,12 +191,13 @@ docs/              screenshots captured by CI
 Verified in CI on a `macos-latest` runner (Xcode 26.6, iOS 26.5 SDK):
 
 - the app builds for the iOS Simulator with code signing disabled;
-- all 70 `DashCamCore` tests pass, both with `swift test` on the macOS host and with `xcodebuild test` in an iOS
+- all 79 `DashCamCore` tests pass, both with `swift test` on the macOS host and with `xcodebuild test` in an iOS
   Simulator (they also pass with Swift 6.0 on Linux);
+- 9 simulator adapter tests pass, including generated video writing and merging;
 - SwiftLint reports no violations;
 - the app installs and launches in the simulator and renders the HUD and the Settings sheet (screenshots above).
 
-**Not verified on hardware.** Neither CI nor the author of this upgrade had an iPhone. Camera capture, `AVAssetWriter`
-segment output, the merge/export, saving to Photos, accelerometer-based detection, GPS, thermal throttling and background
-behavior have not been exercised end to end: they are reviewed code, not tested behavior. The unit tests cover the pure
-logic behind them.
+**Not verified on hardware.** Neither CI nor this review had an iPhone. Live camera/audio capture, HEVC encoding,
+saving to Photos, accelerometer-based detection, GPS, thermal throttling and real background behavior have not been
+exercised end to end. Synthetic H.264 video tests and simulated interruption notifications do not establish hardware
+reliability. The older iOS 17 export fallback also needs a device/runtime check.
