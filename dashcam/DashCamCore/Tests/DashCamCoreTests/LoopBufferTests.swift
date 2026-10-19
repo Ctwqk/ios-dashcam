@@ -85,8 +85,8 @@ final class LoopBufferTests: XCTestCase {
         XCTAssertTrue(deletableNow.isEmpty, "a held segment's file must not be deleted during export")
         XCTAssertEqual(buffer.segments.map(\.id), [segments[1].id, next.id])
 
-        XCTAssertEqual(buffer.releaseHold().map(\.id), [segments[0].id])
-        XCTAssertTrue(buffer.releaseHold().isEmpty, "deferred deletions are reported only once")
+        XCTAssertEqual(buffer.release(segments.map(\.id)).map(\.id), [segments[0].id])
+        XCTAssertTrue(buffer.release(segments.map(\.id)).isEmpty, "deferred deletions are reported only once")
     }
 
     func testUnheldSegmentsAreStillDeletedWhileOthersAreHeld() {
@@ -98,7 +98,7 @@ final class LoopBufferTests: XCTestCase {
         let deletable = buffer.setMaxSegments(1)
 
         XCTAssertEqual(deletable.map(\.id), [segments[1].id])
-        XCTAssertEqual(buffer.releaseHold().map(\.id), [segments[0].id])
+        XCTAssertEqual(buffer.release([segments[0].id]).map(\.id), [segments[0].id])
     }
 
     func testRemoveAllDefersHeldSegments() {
@@ -108,12 +108,24 @@ final class LoopBufferTests: XCTestCase {
         buffer.hold([segments[1].id])
 
         XCTAssertEqual(Set(buffer.removeAll().map(\.id)), [segments[0].id, segments[2].id])
-        XCTAssertEqual(buffer.releaseHold().map(\.id), [segments[1].id])
+        XCTAssertEqual(buffer.release([segments[1].id]).map(\.id), [segments[1].id])
+    }
+
+    func testOverlappingExportsKeepTheFileUntilTheLastOneFinishes() {
+        var buffer = LoopBuffer(maxSegments: 1)
+        let segments = makeSegments(1)
+        buffer.append(segments[0])
+        buffer.hold([segments[0].id])   // e.g. collision export
+        buffer.hold([segments[0].id])   // e.g. manual save while the first is running
+
+        XCTAssertTrue(buffer.append(makeSegment(startingAt: 60)).isEmpty)
+        XCTAssertTrue(buffer.release([segments[0].id]).isEmpty, "one export is still using the file")
+        XCTAssertEqual(buffer.release([segments[0].id]).map(\.id), [segments[0].id])
     }
 
     func testReleasingWithoutAHoldIsANoOp() {
         var buffer = LoopBuffer(maxSegments: 2)
-        XCTAssertTrue(buffer.releaseHold().isEmpty)
+        XCTAssertTrue(buffer.release([UUID()]).isEmpty)
     }
 
     // MARK: - Policy

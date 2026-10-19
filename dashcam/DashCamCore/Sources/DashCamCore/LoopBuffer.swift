@@ -8,13 +8,14 @@ import Foundation
 ///
 /// Segments can be *held* while they are being exported (merged and saved to
 /// Photos). A held segment that is evicted is removed from the buffer
-/// immediately, but its file is only reported as deletable by `releaseHold()`,
-/// so an export never has its input files deleted from under it.
+/// immediately, but its file is only reported as deletable once the last hold on
+/// it is released, so an export never has its input files deleted from under it.
+/// Holds are counted, so overlapping exports are safe.
 public struct LoopBuffer: Equatable, Sendable {
     public private(set) var segments: [Segment] = []
     public private(set) var maxSegments: Int
 
-    private var heldIDs = Set<UUID>()
+    private var holdCounts: [UUID: Int] = [:]
     private var deferredDeletion: [Segment] = []
 
     public init(maxSegments: Int) {
@@ -48,18 +49,24 @@ public struct LoopBuffer: Equatable, Sendable {
         return splitHeld(removed)
     }
 
-    /// Protects the given segments' files from deletion until `releaseHold()`.
+    /// Protects the given segments' files from deletion until `release(_:)`.
     public mutating func hold(_ ids: [UUID]) {
-        heldIDs.formUnion(ids)
+        for id in ids {
+            holdCounts[id, default: 0] += 1
+        }
     }
 
-    /// Ends the hold and returns evicted segments whose deletion was deferred.
+    /// Drops one hold on each of `ids` and returns evicted segments whose files
+    /// are no longer held and can now be deleted.
     @discardableResult
-    public mutating func releaseHold() -> [Segment] {
-        heldIDs.removeAll()
-        let pending = deferredDeletion
-        deferredDeletion.removeAll()
-        return pending
+    public mutating func release(_ ids: [UUID]) -> [Segment] {
+        for id in ids {
+            guard let count = holdCounts[id] else { continue }
+            holdCounts[id] = count > 1 ? count - 1 : nil
+        }
+        let ready = deferredDeletion.filter { holdCounts[$0.id] == nil }
+        deferredDeletion.removeAll { holdCounts[$0.id] == nil }
+        return ready
     }
 
     // MARK: - Private
@@ -76,7 +83,7 @@ public struct LoopBuffer: Equatable, Sendable {
     private mutating func splitHeld(_ candidates: [Segment]) -> [Segment] {
         var deletable: [Segment] = []
         for segment in candidates {
-            if heldIDs.contains(segment.id) {
+            if holdCounts[segment.id] != nil {
                 deferredDeletion.append(segment)
             } else {
                 deletable.append(segment)
