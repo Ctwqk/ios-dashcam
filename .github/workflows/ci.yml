@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  baseline:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | head -40
+      - name: List schemes
+        run: xcodebuild -list -project dashcam/DashCam.xcodeproj
+      - name: Build (iOS Simulator)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project dashcam/DashCam.xcodeproj \
+            -scheme DashCam \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO | tee build.log | tail -80
