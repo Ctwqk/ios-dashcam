@@ -15,7 +15,13 @@ public struct ClipMetadata: Equatable, Sendable {
     public var duration: TimeInterval
     public var id: UUID
 
-    public init(trigger: Trigger, startDate: Date, segmentCount: Int, duration: TimeInterval, id: UUID = UUID()) {
+    public init(
+        trigger: Trigger,
+        startDate: Date,
+        segmentCount: Int,
+        duration: TimeInterval,
+        id: UUID = UUID()
+    ) {
         self.trigger = trigger
         self.startDate = startDate
         self.segmentCount = segmentCount

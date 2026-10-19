@@ -1,0 +1,35 @@
+# SwiftLint configuration for DashCam (app + DashCamCore package).
+# Run `swiftlint lint` from the repository root.
+
+included:
+  - dashcam
+
+excluded:
+  - "**/.build"
+  - "**/DerivedData"
+  - "**/build"
+
+disabled_rules:
+  # SwiftUI's `Button(action: { ... }) { label }` is idiomatic.
+  - multiple_closures_with_trailing_closure
+
+line_length:
+  warning: 130
+  error: 200
+  ignores_urls: true
+
+identifier_name:
+  # Short names are fine for coordinates (x, y, z) and h/m/s clock components.
+  min_length: 1
+
+file_length:
+  warning: 500
+  error: 1000
+
+type_body_length:
+  warning: 350
+  error: 600
+
+function_body_length:
+  warning: 70
+  error: 150
