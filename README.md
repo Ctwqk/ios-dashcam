@@ -1,6 +1,6 @@
 # DashCam for iOS
 
-[![CI](https://github.com/Ctwqk/ios-dashcam/actions/workflows/ci.yml/badge.svg?branch=portfolio-upgrade)](https://github.com/Ctwqk/ios-dashcam/actions/workflows/ci.yml)
+[![CI](https://github.com/Ctwqk/ios-dashcam/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ctwqk/ios-dashcam/actions/workflows/ci.yml)
 
 A SwiftUI dashcam for iPhone: it records in a continuous loop, keeps only the last N minutes on disk, and when the
 accelerometer detects an impact it saves the footage leading up to it to the Photos library.
@@ -184,7 +184,7 @@ docs/              screenshots captured by CI
   and may give upside-down footage (untested).
 - The camera session keeps running after recording stops (the preview stays live).
 - The interruption banner texts ("App in background", ...) are not localized yet.
-- No LICENSE file has been chosen yet.
+- Released under the [MIT License](LICENSE).
 
 ## What has and has not been verified
 
