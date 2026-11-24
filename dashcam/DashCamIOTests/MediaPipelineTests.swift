@@ -75,7 +75,7 @@ final class MediaPipelineTests: XCTestCase {
 
     private func makeDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pu-review-iosdashcam-tests-\(UUID().uuidString)")
+            .appendingPathComponent("iosdashcam-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
